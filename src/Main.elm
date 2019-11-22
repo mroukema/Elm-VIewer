@@ -564,14 +564,14 @@ slideshowView imageUrl backgroundColor =
         )
 
 
-singleFileView ( fileKey, fileSrc ) =
+singleFileView ( imageKey, imageSrc ) =
     Element.image
         [ width fill
         , height fill
         , Element.centerX
         , Element.centerY
-        , onClick <| RemoveImage fileKey
+        , onClick <| RemoveImage imageKey
         ]
-        { src = fileSrc
+        { src = imageSrc
         , description = ""
         }
