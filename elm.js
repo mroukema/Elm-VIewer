@@ -11493,6 +11493,10 @@ var $elm$browser$Browser$Events$on = F3(
 	});
 var $elm$browser$Browser$Events$onKeyPress = A2($elm$browser$Browser$Events$on, $elm$browser$Browser$Events$Document, 'keypress');
 var $elm$browser$Browser$Events$onKeyUp = A2($elm$browser$Browser$Events$on, $elm$browser$Browser$Events$Document, 'keyup');
+var $elm$core$List$sortBy = _List_sortBy;
+var $elm$core$List$sort = function (xs) {
+	return A2($elm$core$List$sortBy, $elm$core$Basics$identity, xs);
+};
 var $author$project$Main$SlideshowView = function (a) {
 	return {$: 'SlideshowView', a: a};
 };
@@ -11544,7 +11548,8 @@ var $author$project$Main$subscriptions = function (model) {
 					$author$project$Main$isSpace,
 					$elm$core$Basics$always(
 						$author$project$Main$startSlideshow(
-							$elm$core$Dict$keys(data)))));
+							$elm$core$List$sort(
+								$elm$core$Dict$keys(data))))));
 		default:
 			return $elm$browser$Browser$Events$onKeyUp(
 				A2(
@@ -18374,7 +18379,8 @@ var $author$project$Main$imageHeader = function (model) {
 							[
 								$mdgriffith$elm_ui$Element$Events$onClick(
 								$author$project$Main$startSlideshow(
-									A2($elm$core$List$map, $elm$core$Tuple$first, imageUrls))),
+									$elm$core$List$sort(
+										A2($elm$core$List$map, $elm$core$Tuple$first, imageUrls)))),
 								$mdgriffith$elm_ui$Element$Font$color(fontColor)
 							]),
 						$mdgriffith$elm_ui$Element$text('Start Slideshow')),

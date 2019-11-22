@@ -289,7 +289,7 @@ subscriptions model =
                 PreviewView ->
                     Browser.onKeyPress <|
                         msgWhen isSpace
-                            (always <| startSlideshow (Dict.keys data))
+                            (always <| startSlideshow <| List.sort <| Dict.keys data)
 
                 PreferencesView ->
                     Browser.onKeyUp <| msgWhen isEsc (always <| ChangeView PreviewView)
@@ -391,7 +391,7 @@ imageHeader model =
 
         ImageList imageUrls _ ->
             Element.row [ Element.width fill, Background.color <| headerBackground, Element.spaceEvenly, Element.padding 5 ]
-                [ Element.text "Start Slideshow" |> Element.el [ onClick <| startSlideshow <| List.map Tuple.first imageUrls, Font.color fontColor ]
+                [ Element.text "Start Slideshow" |> Element.el [ onClick <| startSlideshow <| List.sort <| List.map Tuple.first imageUrls, Font.color fontColor ]
                 , Element.text "Preferences" |> Element.el [ onClick <| ChangeView PreferencesView, Font.color fontColor ]
                 , Element.text "Select Images" |> Element.el [ onClick ImagesRequested, Font.color fontColor ]
                 ]
