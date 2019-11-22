@@ -383,21 +383,21 @@ imageHeader model =
     in
     case model of
         EditPreferences _ ->
-            Element.row [ Element.width fill, Background.color <| headerBackground, Element.spaceEvenly, Element.padding 5 ]
+            Element.row [ width fill, Background.color <| headerBackground, Element.spaceEvenly, Element.padding 5 ]
                 [ Element.text ""
                 , Element.text "Preview View" |> Element.el [ onClick <| ChangeView PreviewView, Font.color fontColor ]
                 , Element.text "Select Images" |> Element.el [ onClick ImagesRequested, Font.color fontColor ]
                 ]
 
         ImageList imageUrls _ ->
-            Element.row [ Element.width fill, Background.color <| headerBackground, Element.spaceEvenly, Element.padding 5 ]
+            Element.row [ width fill, Background.color <| headerBackground, Element.spaceEvenly, Element.padding 5 ]
                 [ Element.text "Start Slideshow" |> Element.el [ onClick <| startSlideshow <| List.sort <| List.map Tuple.first imageUrls, Font.color fontColor ]
                 , Element.text "Preferences" |> Element.el [ onClick <| ChangeView PreferencesView, Font.color fontColor ]
                 , Element.text "Select Images" |> Element.el [ onClick ImagesRequested, Font.color fontColor ]
                 ]
 
         _ ->
-            Element.row [ Element.width fill, Background.color <| rgba255 220 220 220 0.5, Element.spaceEvenly, Element.padding 5 ]
+            Element.row [ width fill, Background.color <| rgba255 220 220 220 0.5, Element.spaceEvenly, Element.padding 5 ]
                 [ Element.text ""
                 , Element.text "Preferences" |> Element.el [ onClick <| ChangeView PreferencesView, Font.color fontColor ]
                 , Element.text "Select Images" |> Element.el [ onClick ImagesRequested, Font.color fontColor ]
@@ -410,7 +410,7 @@ imageViewer model =
         content =
             case model of
                 ImageList images preferences ->
-                    Element.column [ Element.width fill, Element.height fill ]
+                    Element.column [ width fill, height fill ]
                         [ imageHeader model
                         , filePreviewView (List.map Tuple.second images) preferences
                         ]
@@ -419,17 +419,13 @@ imageViewer model =
                     slideshowView currentImage backgroundColor
 
                 EditPreferences preferences ->
-                    Element.column [ Element.width fill, Element.height fill ]
+                    Element.column [ width fill, height fill ]
                         [ imageHeader model
                         , editPreferencesView preferences
                         ]
     in
     content
-        |> Element.layout
-            [ Element.height fill
-            , Element.width fill
-            , Background.color defaultPreferences.backgroundColor
-            ]
+        |> Element.layout [ height fill, width fill ]
 
 
 colorPicker =
@@ -447,16 +443,16 @@ colorBox color =
 
 editPreferencesView : Preferences -> Element Msg
 editPreferencesView { slideshowSpeed, backgroundColor, previewItemsPerRow } =
-    Element.el [ Element.width fill, Element.height fill, Background.color backgroundColor, Element.spacing 50, Element.padding 20 ] <|
-        Element.column [ Element.width Element.fill, Element.padding 35, Background.color <| rgba255 0 0 0 0.5, Element.spacing 10 ]
+    Element.el [ width fill, height fill, Background.color backgroundColor, Element.spacing 50, Element.padding 20 ] <|
+        Element.column [ width Element.fill, Element.padding 35, Background.color <| rgba255 0 0 0 0.5, Element.spacing 10 ]
             [ Input.slider
-                [ Element.width <| Element.fillPortion 4
-                , Element.behindContent <| Element.el [ Background.color <| rgba255 255 255 255 1, Element.height (5 |> px), Element.width fill, Element.centerY ] Element.none
+                [ width <| Element.fillPortion 4
+                , Element.behindContent <| Element.el [ Background.color <| rgba255 255 255 255 1, height (5 |> px), width fill, Element.centerY ] Element.none
                 ]
                 { onChange = SetSlideshowInterval
                 , label =
                     Input.labelLeft
-                        [ Font.color <| rgba255 250 250 250 1.0, Element.width <| Element.fillPortion 1 ]
+                        [ Font.color <| rgba255 250 250 250 1.0, width <| Element.fillPortion 1 ]
                         (Element.text
                             ("Slideshow Speed = "
                                 ++ String.fromFloat
@@ -471,13 +467,13 @@ editPreferencesView { slideshowSpeed, backgroundColor, previewItemsPerRow } =
                 , step = Nothing
                 }
             , Input.slider
-                [ Element.width <| Element.fillPortion 4
-                , Element.behindContent <| Element.el [ Background.color <| rgba255 255 255 255 1, Element.height (5 |> px), Element.width fill, Element.centerY ] Element.none
+                [ width <| Element.fillPortion 4
+                , Element.behindContent <| Element.el [ Background.color <| rgba255 255 255 255 1, height (5 |> px), width fill, Element.centerY ] Element.none
                 ]
                 { onChange = round >> SetElementsPerRow
                 , label =
                     Input.labelLeft
-                        [ Font.color <| rgba255 250 250 250 1.0, Element.width <| Element.fillPortion 1 ]
+                        [ Font.color <| rgba255 250 250 250 1.0, width <| Element.fillPortion 1 ]
                         (Element.text
                             ("Images per Row = " ++ String.fromInt previewItemsPerRow)
                         )
@@ -494,23 +490,37 @@ editPreferencesView { slideshowSpeed, backgroundColor, previewItemsPerRow } =
             ]
 
 
-filePreviewView : List ImageUrl -> { r | imagesPerRow : Int, backgroundColor : Element.Color } -> Element Msg
-filePreviewView files preferences =
-    List.greedyGroupsOf preferences.imagesPerRow files
-        |> List.map
-            (List.map singleFileView
-                >> Element.row
-                    [ Element.spaceEvenly
-                    , Element.spacing 5
-                    , Element.width fill
+flip : (arg2 -> arg1 -> o) -> arg1 -> arg2 -> o
+flip func arg1 arg2 =
+    func arg2 arg1
 
-                    --, Element.rotate (Basics.pi / 2)
-                    ]
+
+filePreviewView : List ImageUrl -> { r | imagesPerRow : Int, backgroundColor : Element.Color } -> Element Msg
+filePreviewView files { imagesPerRow, backgroundColor } =
+    List.greedyGroupsOf imagesPerRow files
+        |> List.map
+            (\group ->
+                let
+                    elementDeficit =
+                        imagesPerRow - List.length group
+                in
+                group
+                    |> List.map singleFileView
+                    |> flip List.append
+                        (List.repeat
+                            elementDeficit
+                            (Element.el [ width fill, height fill ] Element.none)
+                        )
+                    |> Element.row
+                        [ Element.spaceEvenly
+                        , Element.spacing 5
+                        , width fill
+                        ]
             )
         |> Element.column
-            [ Element.width fill
-            , Element.height fill
-            , Background.color preferences.backgroundColor
+            [ width fill
+            , height fill
+            , Background.color backgroundColor
             , Element.spacing 5
             , Element.padding 5
             ]
@@ -527,8 +537,8 @@ slideshowView imageUrl backgroundColor =
     in
     Element.el
         [ Element.clip
-        , Element.width fill
-        , Element.height fill
+        , width fill
+        , height fill
         , Background.color backgroundColor
         ]
         (Element.html
@@ -548,7 +558,7 @@ slideshowView imageUrl backgroundColor =
 
 
 singleFileView fileSrc =
-    Element.image [ Element.width fill, Element.height fill, Element.centerX, Element.centerY ]
+    Element.image [ width fill, height fill, Element.centerX, Element.centerY ]
         { src = fileSrc
         , description = ""
         }
