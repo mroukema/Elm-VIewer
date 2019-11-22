@@ -92,6 +92,7 @@ type Msg
     | SetBackgroundColor Element.Color
     | SetElementsPerRow Int
     | ChangeView ViewState
+    | RemoveImage ImageKey
 
 
 type alias ImageKey =
@@ -229,6 +230,11 @@ update msg model =
             case model of
                 Model data preferences _ ->
                     ( Model data preferences newState, Cmd.none )
+
+        RemoveImage imageKey ->
+            case model of
+                Model data preferences state ->
+                    ( Model (Dict.remove imageKey data) preferences state, Cmd.none )
 
 
 colorPalette =
@@ -412,7 +418,7 @@ imageViewer model =
                 ImageList images preferences ->
                     Element.column [ width fill, height fill ]
                         [ imageHeader model
-                        , filePreviewView (List.map Tuple.second images) preferences
+                        , filePreviewView images preferences
                         ]
 
                 Slideshow currentImage { backgroundColor } ->
@@ -495,9 +501,9 @@ flip func arg1 arg2 =
     func arg2 arg1
 
 
-filePreviewView : List ImageUrl -> { r | imagesPerRow : Int, backgroundColor : Element.Color } -> Element Msg
-filePreviewView files { imagesPerRow, backgroundColor } =
-    List.greedyGroupsOf imagesPerRow files
+filePreviewView : List ( ImageKey, ImageUrl ) -> { r | imagesPerRow : Int, backgroundColor : Element.Color } -> Element Msg
+filePreviewView images { imagesPerRow, backgroundColor } =
+    List.greedyGroupsOf imagesPerRow images
         |> List.map
             (\group ->
                 let
@@ -515,6 +521,7 @@ filePreviewView files { imagesPerRow, backgroundColor } =
                         [ Element.spaceEvenly
                         , Element.spacing 5
                         , width fill
+                        , height fill
                         ]
             )
         |> Element.column
@@ -557,8 +564,14 @@ slideshowView imageUrl backgroundColor =
         )
 
 
-singleFileView fileSrc =
-    Element.image [ width fill, height fill, Element.centerX, Element.centerY ]
+singleFileView ( fileKey, fileSrc ) =
+    Element.image
+        [ width fill
+        , height fill
+        , Element.centerX
+        , Element.centerY
+        , onClick <| RemoveImage fileKey
+        ]
         { src = fileSrc
         , description = ""
         }
