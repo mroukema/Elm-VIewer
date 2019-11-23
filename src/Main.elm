@@ -52,13 +52,24 @@ defaultPreferences : Preferences
 defaultPreferences =
     { slideshowSpeed = 3 * 1000
     , previewItemsPerRow = 8
-    , backgroundColor = List.getAt 1 (List.map (toRGB >> (\( r, g, b ) -> rgb255 r g b)) colorPalette) |> Maybe.withDefault (rgb 0 0 0)
+    , backgroundColor =
+        case colorPalette of
+            ( head, tail ) ->
+                (::) head tail
+                    |> List.map (toRGB >> rgbTuple)
+                    |> List.getAt 1
+                    |> Maybe.withDefault (head |> (toRGB >> rgbTuple))
     }
 
 
-colorPalette : List Cubehelix.Color
+colorPalette : ( Cubehelix.Color, List Cubehelix.Color )
 colorPalette =
-    Cubehelix.generate 20
+    case Cubehelix.generate 20 of
+        head :: tail ->
+            ( head, tail )
+
+        [] ->
+            ( Cubehelix.fromRGB ( 1, 1, 1 ), [] )
 
 
 
@@ -291,36 +302,54 @@ viewSelector model =
 imageHeader model =
     let
         headerBackground =
-            colorPalette |> List.map (toRGB >> rgbTuple) |> List.getAt 3 |> Maybe.withDefault (rgb255 0 0 0)
+            case colorPalette of
+                ( head, tail ) ->
+                    (::) head tail
+                        |> List.map (toRGB >> rgbTuple)
+                        |> List.getAt 3
+                        |> Maybe.withDefault (head |> (toRGB >> rgbTuple))
 
         fontColor =
-            colorPalette |> List.map (toRGB >> rgbTuple) |> List.last |> Maybe.withDefault (rgb255 0 0 0)
+            case colorPalette of
+                ( head, tail ) ->
+                    (::) head tail
+                        |> List.map (toRGB >> rgbTuple)
+                        |> List.last
+                        |> Maybe.withDefault (head |> (toRGB >> rgbTuple))
     in
     case model of
         EditPreferences _ ->
             Element.row [ width fill, Background.color <| headerBackground, Element.spaceEvenly, Element.padding 5 ]
-                [ Element.text ""
-                , Element.text "Preview View"
+                [ "" |> Element.text
+                , "Preview View"
+                    |> Element.text
                     |> Element.el [ onClick <| UpdateView PreviewView, Font.color fontColor ]
-                , Element.text "Select Images"
+                , "Select Images"
+                    |> Element.text
                     |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
                 ]
 
         ImageList imageUrls _ ->
             Element.row [ width fill, Background.color <| headerBackground, Element.spaceEvenly, Element.padding 5 ]
-                [ Element.text "Start Slideshow"
-                    |> Element.el [ onClick <| startSlideshow <| List.sort <| List.map Tuple.first imageUrls, Font.color fontColor ]
-                , Element.text "Preferences"
+                [ "Start Slideshow"
+                    |> Element.text
+                    |> Element.el
+                        [ onClick <| startSlideshow <| List.sort <| List.map Tuple.first imageUrls
+                        , Font.color fontColor
+                        ]
+                , "Preferences"
+                    |> Element.text
                     |> Element.el [ onClick <| UpdateView PreferencesView, Font.color fontColor ]
-                , Element.text "Select Images"
+                , "Select Images"
+                    |> Element.text
                     |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
                 ]
 
         _ ->
             Element.row [ width fill, Background.color <| rgba255 220 220 220 0.5, Element.spaceEvenly, Element.padding 5 ]
-                [ Element.text ""
-                , Element.text "Preferences" |> Element.el [ onClick <| UpdateView PreferencesView, Font.color fontColor ]
-                , Element.text "Select Images" |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
+                [ "" |> Element.text
+                , "Preferences" |> Element.text |> Element.el [ onClick <| UpdateView PreferencesView, Font.color fontColor ]
+                , "Select Images" |> Element.text |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
                 ]
 
 
@@ -349,12 +378,9 @@ imageViewer model =
 
 
 colorPicker updateMsg =
-    colorPalette
-        |> List.map
-            (toRGB
-                >> (\( r, g, b ) -> rgb255 r g b)
-                >> (\rgbColor -> colorPickerBox rgbColor updateMsg)
-            )
+    case colorPalette of
+        ( head, tail ) ->
+            (::) head tail |> List.map (toRGB >> rgbTuple >> (\rgbColor -> colorPickerBox rgbColor updateMsg))
 
 
 colorPickerBox color colorChangeMsg =
