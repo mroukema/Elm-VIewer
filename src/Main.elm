@@ -45,7 +45,7 @@ main =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model Dict.empty defaultPreferences PreviewView, Cmd.none )
+    ( Model Dict.empty defaultPreferences Preview, Cmd.none )
 
 
 defaultPreferences : Preferences
@@ -81,19 +81,19 @@ type Model
 
 
 type ViewModel
-    = ImageList
+    = PreviewView
         (List ( ImageKey, ImageUrl ))
         { imagesPerRow : Int
         , backgroundColor : Element.Color
         }
-    | Slideshow ImageUrl { backgroundColor : Element.Color }
-    | EditPreferences Preferences
+    | SlideshowView ImageUrl { backgroundColor : Element.Color }
+    | SettingsView Preferences
 
 
 type ViewState
-    = SlideshowView SlideshowState
-    | PreviewView
-    | PreferencesView
+    = Slideshow SlideshowState
+    | Preview
+    | Settings
 
 
 type alias SlideshowState =
@@ -141,7 +141,7 @@ insertImageFromFile file =
 
 updateSlideshow : SlideshowState -> Msg
 updateSlideshow state =
-    UpdateView <| SlideshowView state
+    UpdateView <| Slideshow state
 
 
 startSlideshow : List ImageKey -> Msg
@@ -168,12 +168,12 @@ stepSlideshow state direction =
     case direction of
         Forward ->
             { state | slidelist = stepList state.slidelist }
-                |> SlideshowView
+                |> Slideshow
                 |> UpdateView
 
         Backward ->
             { state | slidelist = (List.reverse << stepList << List.reverse) state.slidelist }
-                |> SlideshowView
+                |> Slideshow
                 |> UpdateView
 
 
@@ -232,7 +232,7 @@ subscriptions model =
     case model of
         Model data { slideshowSpeed } state ->
             case state of
-                SlideshowView currentState ->
+                Slideshow currentState ->
                     let
                         { running, slidelist } =
                             currentState
@@ -240,7 +240,7 @@ subscriptions model =
                         navigationListeners =
                             [ Browser.onKeyPress <| msgWhen isSpace (always <| togglePauseSlideshow currentState)
                             , Browser.onKeyUp <| msgWhen isNavKey (stepSlideshow currentState)
-                            , Browser.onKeyUp <| msgWhen isEsc (always <| UpdateView PreviewView)
+                            , Browser.onKeyUp <| msgWhen isEsc (always <| UpdateView Preview)
                             ]
                     in
                     case running of
@@ -253,13 +253,13 @@ subscriptions model =
                         False ->
                             Sub.batch navigationListeners
 
-                PreviewView ->
+                Preview ->
                     Browser.onKeyPress <|
                         msgWhen isSpace
                             (always <| startSlideshow <| List.sort <| Dict.keys data)
 
-                PreferencesView ->
-                    Browser.onKeyUp <| msgWhen isEsc (always <| UpdateView PreviewView)
+                Settings ->
+                    Browser.onKeyUp <| msgWhen isEsc (always <| UpdateView Preview)
 
 
 
@@ -280,23 +280,23 @@ viewSelector model =
                     Dict.toList data
             in
             case viewState of
-                PreferencesView ->
-                    EditPreferences preferences
+                Settings ->
+                    SettingsView preferences
 
-                PreviewView ->
-                    ImageList imageList
+                Preview ->
+                    PreviewView imageList
                         { imagesPerRow = preferences.previewItemsPerRow, backgroundColor = preferences.backgroundColor }
 
-                SlideshowView { running, slidelist } ->
+                Slideshow { running, slidelist } ->
                     case List.filterMap (getFromDict data) slidelist of
                         [] ->
-                            ImageList imageList
+                            PreviewView imageList
                                 { imagesPerRow = preferences.previewItemsPerRow
                                 , backgroundColor = preferences.backgroundColor
                                 }
 
                         firstImage :: images ->
-                            Slideshow firstImage { backgroundColor = preferences.backgroundColor }
+                            SlideshowView firstImage { backgroundColor = preferences.backgroundColor }
 
 
 imageHeader model =
@@ -318,18 +318,18 @@ imageHeader model =
                         |> Maybe.withDefault (head |> (toRGB >> rgbTuple))
     in
     case model of
-        EditPreferences _ ->
+        SettingsView _ ->
             Element.row [ width fill, Background.color <| headerBackground, Element.spaceEvenly, Element.padding 5 ]
                 [ "" |> Element.text
                 , "Preview View"
                     |> Element.text
-                    |> Element.el [ onClick <| UpdateView PreviewView, Font.color fontColor ]
+                    |> Element.el [ onClick <| UpdateView Preview, Font.color fontColor ]
                 , "Select Images"
                     |> Element.text
                     |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
                 ]
 
-        ImageList imageUrls _ ->
+        PreviewView imageUrls _ ->
             Element.row [ width fill, Background.color <| headerBackground, Element.spaceEvenly, Element.padding 5 ]
                 [ "Start Slideshow"
                     |> Element.text
@@ -339,7 +339,7 @@ imageHeader model =
                         ]
                 , "Preferences"
                     |> Element.text
-                    |> Element.el [ onClick <| UpdateView PreferencesView, Font.color fontColor ]
+                    |> Element.el [ onClick <| UpdateView Settings, Font.color fontColor ]
                 , "Select Images"
                     |> Element.text
                     |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
@@ -348,7 +348,7 @@ imageHeader model =
         _ ->
             Element.row [ width fill, Background.color <| rgba255 220 220 220 0.5, Element.spaceEvenly, Element.padding 5 ]
                 [ "" |> Element.text
-                , "Preferences" |> Element.text |> Element.el [ onClick <| UpdateView PreferencesView, Font.color fontColor ]
+                , "Preferences" |> Element.text |> Element.el [ onClick <| UpdateView Settings, Font.color fontColor ]
                 , "Select Images" |> Element.text |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
                 ]
 
@@ -358,16 +358,16 @@ imageViewer model =
     let
         content =
             case model of
-                ImageList images preferences ->
+                PreviewView images preferences ->
                     Element.column [ width fill, height fill ]
                         [ imageHeader model
                         , filePreviewView images preferences
                         ]
 
-                Slideshow currentImage { backgroundColor } ->
+                SlideshowView currentImage { backgroundColor } ->
                     slideshowView currentImage backgroundColor
 
-                EditPreferences preferences ->
+                SettingsView preferences ->
                     Element.column [ width fill, height fill ]
                         [ imageHeader model
                         , editPreferencesView preferences
@@ -394,7 +394,13 @@ editPreferencesView ({ slideshowSpeed, backgroundColor, previewItemsPerRow } as 
             [ Input.slider
                 [ width <| Element.fillPortion 4
                 , Element.behindContent <|
-                    Element.el [ Background.color <| rgba255 255 255 255 1, height (5 |> px), width fill, Element.centerY ] Element.none
+                    Element.el
+                        [ Background.color <| rgba255 255 255 255 1
+                        , height (5 |> px)
+                        , width fill
+                        , Element.centerY
+                        ]
+                        Element.none
                 ]
                 { onChange = \newSpeed -> UpdatePreferences { preferences | slideshowSpeed = newSpeed }
                 , label =
@@ -416,7 +422,13 @@ editPreferencesView ({ slideshowSpeed, backgroundColor, previewItemsPerRow } as 
             , Input.slider
                 [ width <| Element.fillPortion 4
                 , Element.behindContent <|
-                    Element.el [ Background.color <| rgba255 255 255 255 1, height (5 |> px), width fill, Element.centerY ] Element.none
+                    Element.el
+                        [ Background.color <| rgba255 255 255 255 1
+                        , height (5 |> px)
+                        , width fill
+                        , Element.centerY
+                        ]
+                        Element.none
                 ]
                 { onChange = round >> (\newCount -> UpdatePreferences { preferences | previewItemsPerRow = newCount })
                 , label =
