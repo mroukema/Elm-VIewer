@@ -24,6 +24,11 @@ import Url exposing (Url)
 import Utils exposing (Direction(..), flip, getFromDict, isEsc, isNavKey, isSpace, msgWhen, rgb255, rgbTuple)
 
 
+{-| Elm-Viewer
+A browser based image viewing and slideshow program for local files
+-}
+
+
 
 -- Init
 
@@ -108,13 +113,12 @@ type alias ImageUrl =
 
 
 type Msg
-    = NoOp
-    | OpenImagePicker
+    = OpenImagePicker
     | FilesReceived File (List File)
-    | InsertImage String (Result () ImageUrl)
+    | InsertImage ImageKey (Result () ImageUrl)
+    | RemoveImage ImageKey
     | UpdateView ViewState
     | UpdatePreferences Preferences
-    | RemoveImage ImageKey
 
 
 insertImageFromFile : File -> Cmd Msg
@@ -168,14 +172,7 @@ stepSlideshow state direction =
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    let
-        noop =
-            ( model, Cmd.none )
-    in
     case msg of
-        NoOp ->
-            noop
-
         OpenImagePicker ->
             ( model, Select.files [ "image/png", "image/jpg" ] FilesReceived )
 
@@ -192,7 +189,12 @@ update msg model =
                             ( Model (Dict.insert filename imageUrl images) preferences state, Cmd.none )
 
                 Err _ ->
-                    noop
+                    ( model, Cmd.none )
+
+        RemoveImage imageKey ->
+            case model of
+                Model data preferences state ->
+                    ( Model (Dict.remove imageKey data) preferences state, Cmd.none )
 
         UpdatePreferences preferences ->
             case model of
@@ -203,11 +205,6 @@ update msg model =
             case model of
                 Model data preferences _ ->
                     ( Model data preferences newState, Cmd.none )
-
-        RemoveImage imageKey ->
-            case model of
-                Model data preferences state ->
-                    ( Model (Dict.remove imageKey data) preferences state, Cmd.none )
 
 
 toggleRunning : { r | running : Bool } -> { r | running : Bool }
