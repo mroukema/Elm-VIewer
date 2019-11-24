@@ -299,10 +299,9 @@ subscriptions model =
                     in
                     case currentState.running of
                         True ->
-                            Sub.batch <|
-                                (::)
-                                    (Time.every slideshowSpeed (\_ -> stepSlideshow currentState Forward))
-                                    navigationListeners
+                            navigationListeners
+                                |> (::) (Time.every slideshowSpeed (\_ -> stepSlideshow currentState Forward))
+                                |> Sub.batch
 
                         False ->
                             Sub.batch navigationListeners
@@ -395,7 +394,8 @@ imageHeader model =
         fontColor =
             case colorPalette of
                 ( head, tail ) ->
-                    (::) head tail
+                    tail
+                        |> (::) head
                         |> List.map rgbPaletteColor
                         |> List.last
                         |> Maybe.withDefault (head |> rgbPaletteColor)
@@ -439,10 +439,12 @@ imageHeader model =
 colorPicker updateMsg =
     case colorPalette of
         ( head, tail ) ->
-            (::) head tail |> List.map (rgbPaletteColor >> (\rgbColor -> colorPickerBox rgbColor updateMsg))
+            tail
+                |> (::) head
+                |> List.map (rgbPaletteColor >> colorPickerBox updateMsg)
 
 
-colorPickerBox color colorChangeMsg =
+colorPickerBox colorChangeMsg color =
     Element.el [ Background.color color, width fill, height fill, onClick (colorChangeMsg color) ] <| Element.column [] []
 
 
