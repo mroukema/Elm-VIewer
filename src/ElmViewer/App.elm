@@ -1,4 +1,4 @@
-module ElmViewer exposing (Model, Msg, init, subscriptions, update, view)
+module ElmViewer.App exposing (Model, Msg, init, subscriptions, update, view)
 
 import Basics exposing (not, pi)
 import Browser

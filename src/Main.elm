@@ -1,7 +1,7 @@
 module Main exposing (main)
 
 import Browser
-import ElmViewer exposing (Model, Msg, init, subscriptions, update, view)
+import ElmViewer.App exposing (Model, Msg, init, subscriptions, update, view)
 
 
 main : Program () Model Msg
