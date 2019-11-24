@@ -21,7 +21,19 @@ import Palette.Cubehelix as Cubehelix
 import Task
 import Time
 import Url exposing (Url)
-import Utils exposing (Direction(..), flip, getFromDict, isEsc, isNavKey, isSpace, msgWhen, rgb255, rgbTuple)
+import Utils
+    exposing
+        ( Direction(..)
+        , flip
+        , getFromDict
+        , isEsc
+        , isNavKey
+        , isSpace
+        , msgWhen
+        , rgb255
+        , rgbTuple
+        , seconds
+        )
 
 
 {-| Elm-Viewer
@@ -50,16 +62,17 @@ init _ =
 
 defaultPreferences : Preferences
 defaultPreferences =
-    { slideshowSpeed = 3 * 1000
+    { slideshowSpeed = 3 |> seconds
     , previewItemsPerRow = 8
-    , backgroundColor =
-        case colorPalette of
-            ( head, tail ) ->
-                (::) head tail
-                    |> List.map (toRGB >> rgbTuple)
-                    |> List.getAt 1
-                    |> Maybe.withDefault (head |> (toRGB >> rgbTuple))
+    , backgroundColor = defaultBackground
     }
+
+
+defaultBackground : Element.Color
+defaultBackground =
+    case colorPalette of
+        ( head, _ ) ->
+            head |> (toRGB >> rgbTuple)
 
 
 colorPalette : ( Cubehelix.Color, List Cubehelix.Color )
@@ -76,10 +89,38 @@ colorPalette =
 -- Model
 
 
+{-| Model
+The persisted model of the application.
+
+We make a distinction between application data `Data`, configurables `Preferences`,
+and view data `ViewState`
+
+  - `Data` The data that drives our application; images and thier organization
+  - `Preferences` The data that controls behaviours and appearances of our application
+  - `ViewState` The data pertaining to what we are currently showing
+
+-}
 type Model
     = Model Data Preferences ViewState
 
 
+{-| ViewModel
+ViewModel is the set of data, derived from Model, needed to render a particualar scene.
+
+Data will be derived whenever `view` executes. This is accomplished composing a
+view selector and view renderer.
+
+`view = viewSelector >> renderView`
+
+  - `viewSelector` will select raw data from our Model and perform any transformations required
+    to produce the information needed for current scene.
+  - `renderView` does the job of generating the html based on the provided scene data.
+
+This allows clean seperation of underlying model from concerns of particualar views.
+
+Note: memoization makes this process more efficent than it may appear\_
+
+-}
 type ViewModel
     = PreviewView
         (List ( ImageKey, ImageUrl ))
@@ -90,12 +131,22 @@ type ViewModel
     | SettingsView Preferences
 
 
+{-| ViewState
+ViewState is the persistance of what both what the curerent view is any
+state data used by that scene.
+-}
 type ViewState
     = Slideshow SlideshowState
     | Preview
     | Settings
 
 
+{-| SlideshowState
+Data that needs to be persisted when in the slideshow scene
+
+Note: persisted data for scene not data required to render the scene
+
+-}
 type alias SlideshowState =
     { running : Bool, slidelist : List ImageKey }
 
@@ -132,13 +183,6 @@ type Msg
     | UpdatePreferences Preferences
 
 
-insertImageFromFile : File -> Cmd Msg
-insertImageFromFile file =
-    Task.attempt
-        (InsertImage (File.name file))
-        (File.toUrl file)
-
-
 updateSlideshow : SlideshowState -> Msg
 updateSlideshow state =
     UpdateView <| Slideshow state
@@ -151,7 +195,12 @@ startSlideshow slides =
 
 togglePauseSlideshow : SlideshowState -> Msg
 togglePauseSlideshow state =
-    updateSlideshow (toggleRunning state)
+    updateSlideshow <| toggleRunning state
+
+
+toggleRunning : { r | running : Bool } -> { r | running : Bool }
+toggleRunning state =
+    { state | running = (not << .running) state }
 
 
 stepSlideshow : SlideshowState -> Direction -> Msg
@@ -175,6 +224,17 @@ stepSlideshow state direction =
             { state | slidelist = (List.reverse << stepList << List.reverse) state.slidelist }
                 |> Slideshow
                 |> UpdateView
+
+
+
+-- Commands
+
+
+insertImageFromFile : File -> Cmd Msg
+insertImageFromFile file =
+    Task.attempt
+        (InsertImage (File.name file))
+        (File.toUrl file)
 
 
 
@@ -218,11 +278,6 @@ update msg model =
                     ( Model data preferences newState, Cmd.none )
 
 
-toggleRunning : { r | running : Bool } -> { r | running : Bool }
-toggleRunning state =
-    { state | running = (not << .running) state }
-
-
 
 -- Subscriptions
 
@@ -234,21 +289,18 @@ subscriptions model =
             case state of
                 Slideshow currentState ->
                     let
-                        { running, slidelist } =
-                            currentState
-
                         navigationListeners =
-                            [ Browser.onKeyPress <| msgWhen isSpace (always <| togglePauseSlideshow currentState)
-                            , Browser.onKeyUp <| msgWhen isNavKey (stepSlideshow currentState)
-                            , Browser.onKeyUp <| msgWhen isEsc (always <| UpdateView Preview)
+                            [ Browser.onKeyPress <| msgWhen isSpace (\_ -> togglePauseSlideshow currentState)
+                            , Browser.onKeyUp <| msgWhen isNavKey (\dir -> stepSlideshow currentState dir)
+                            , Browser.onKeyUp <| msgWhen isEsc (\_ -> UpdateView Preview)
                             ]
                     in
-                    case running of
+                    case currentState.running of
                         True ->
-                            Sub.batch
-                                (Time.every slideshowSpeed (always <| stepSlideshow currentState Forward)
-                                    :: navigationListeners
-                                )
+                            Sub.batch <|
+                                (::)
+                                    (Time.every slideshowSpeed (\_ -> stepSlideshow currentState Forward))
+                                    navigationListeners
 
                         False ->
                             Sub.batch navigationListeners
@@ -268,9 +320,17 @@ subscriptions model =
 
 view : Model -> Html Msg
 view =
-    viewSelector >> imageViewer
+    viewSelector >> renderView
 
 
+{-| viewSelector
+Select and transform our Model data into set of required data for the current view.
+
+  - Current view is determined by the type of `ViewState` in our model.
+  - The data selected is determined by type of `ViewState` as well as any
+    data persisted in that state.
+
+-}
 viewSelector : Model -> ViewModel
 viewSelector model =
     case model of
@@ -297,6 +357,30 @@ viewSelector model =
 
                         firstImage :: images ->
                             SlideshowView firstImage { backgroundColor = preferences.backgroundColor }
+
+
+renderView : ViewModel -> Html Msg
+renderView model =
+    let
+        content =
+            case model of
+                PreviewView images preferences ->
+                    Element.column [ width fill, height fill ]
+                        [ imageHeader model
+                        , filePreviewView images preferences
+                        ]
+
+                SlideshowView currentImage { backgroundColor } ->
+                    slideshowView currentImage backgroundColor
+
+                SettingsView preferences ->
+                    Element.column [ width fill, height fill ]
+                        [ imageHeader model
+                        , editPreferencesView preferences
+                        ]
+    in
+    content
+        |> Element.layout [ height fill, width fill ]
 
 
 imageHeader model =
@@ -351,30 +435,6 @@ imageHeader model =
                 , "Preferences" |> Element.text |> Element.el [ onClick <| UpdateView Settings, Font.color fontColor ]
                 , "Select Images" |> Element.text |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
                 ]
-
-
-imageViewer : ViewModel -> Html Msg
-imageViewer model =
-    let
-        content =
-            case model of
-                PreviewView images preferences ->
-                    Element.column [ width fill, height fill ]
-                        [ imageHeader model
-                        , filePreviewView images preferences
-                        ]
-
-                SlideshowView currentImage { backgroundColor } ->
-                    slideshowView currentImage backgroundColor
-
-                SettingsView preferences ->
-                    Element.column [ width fill, height fill ]
-                        [ imageHeader model
-                        , editPreferencesView preferences
-                        ]
-    in
-    content
-        |> Element.layout [ height fill, width fill ]
 
 
 colorPicker updateMsg =

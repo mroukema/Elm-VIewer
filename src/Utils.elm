@@ -8,6 +8,7 @@ module Utils exposing
     , msgWhen
     , rgb255
     , rgbTuple
+    , seconds
     )
 
 import Dict exposing (Dict)
@@ -49,6 +50,10 @@ flip func arg1 arg2 =
 getFromDict : Dict comparable value -> comparable -> Maybe value
 getFromDict dict key =
     Dict.get key dict
+
+
+seconds =
+    (*) 1000
 
 
 
