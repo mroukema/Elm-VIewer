@@ -1,4 +1,4 @@
-module Main exposing (main)
+module ElmViewer exposing (Model, Msg, init, subscriptions, update, view)
 
 import Basics exposing (not, pi)
 import Browser
@@ -35,23 +35,12 @@ import Utils
         )
 
 
-{-| Elm-Viewer
-A browser based image viewing and slideshow program for local files
+{-| Image viewing and slideshow program for local files
 -}
 
 
 
 -- Init
-
-
-main : Program () Model Msg
-main =
-    Browser.element
-        { init = init
-        , subscriptions = subscriptions
-        , update = update
-        , view = view
-        }
 
 
 init : () -> ( Model, Cmd Msg )
@@ -94,11 +83,11 @@ colorPalette =
 {-| Model
 The persisted model of the application.
 
-We make a distinction between application data `Data`, configurables `Preferences`,
+We make a distinction between application data `Data`, configurable's `Preferences`,
 and view data `ViewState`
 
-  - `Data` The data that drives our application; images and thier organization
-  - `Preferences` The data that controls behaviours and appearances of our application
+  - `Data` The data that drives our application; images and their organization
+  - `Preferences` The data that controls behaviors and appearances of our application
   - `ViewState` The data pertaining to what we are currently showing
 
 -}
@@ -107,7 +96,7 @@ type Model
 
 
 {-| ViewModel
-ViewModel is the set of data, derived from Model, needed to render a particualar scene.
+ViewModel is the set of data, derived from Model, needed to render a particular scene.
 
 Data will be derived whenever `view` executes. This is accomplished composing a
 view selector and view renderer.
@@ -118,9 +107,9 @@ view selector and view renderer.
     to produce the information needed for current scene.
   - `renderView` does the job of generating the html based on the provided scene data.
 
-This allows clean seperation of underlying model from concerns of particualar views.
+This allows clean separation of underlying model from concerns of particular views.
 
-Note: memoization makes this process more efficent than it may appear\_
+Note: memoization makes this process more efficient than it may appear\_
 
 -}
 type ViewModel
@@ -134,7 +123,7 @@ type ViewModel
 
 
 {-| ViewState
-ViewState is the persistance of what both what the curerent view is any
+ViewState is the persistence of what both what the current view is any
 state data used by that scene.
 -}
 type ViewState
@@ -552,7 +541,7 @@ filePreviewView images { imagesPerRow, backgroundColor } =
 
 
 {-| slideshowView
-Use of Html.img due ot Element.img not respecting parent height with base64 encoded image
+Use of Html.img due to Element.img not respecting parent height with base64 encoded image
 -}
 slideshowView : String -> Element.Color -> Element Msg
 slideshowView imageUrl backgroundColor =
