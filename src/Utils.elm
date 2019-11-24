@@ -6,11 +6,11 @@ module Utils exposing
     , isNavKey
     , isSpace
     , msgWhen
-    , rgb255
-    , rgbTuple
+    , rgbPaletteColor
     , seconds
     )
 
+import Color as PaletteColor exposing (toRGB)
 import Dict exposing (Dict)
 import Element
 import Json.Decode as Json
@@ -60,14 +60,13 @@ seconds =
 -- Colors
 
 
-rgb255 : Float -> Float -> Float -> Element.Color
-rgb255 r g b =
+rgbFromTuple : ( Float, Float, Float ) -> Element.Color
+rgbFromTuple ( r, g, b ) =
     Element.rgb (r / 255) (g / 255) (b / 255)
 
 
-rgbTuple : ( Float, Float, Float ) -> Element.Color
-rgbTuple ( r, g, b ) =
-    rgb255 r g b
+rgbPaletteColor =
+    PaletteColor.toRGB >> rgbFromTuple
 
 
 

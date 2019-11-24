@@ -30,8 +30,7 @@ import Utils
         , isNavKey
         , isSpace
         , msgWhen
-        , rgb255
-        , rgbTuple
+        , rgbPaletteColor
         , seconds
         )
 
@@ -71,8 +70,11 @@ defaultPreferences =
 defaultBackground : Element.Color
 defaultBackground =
     case colorPalette of
-        ( head, _ ) ->
-            head |> (toRGB >> rgbTuple)
+        ( head, tail ) ->
+            tail
+                |> List.getAt 1
+                |> Maybe.withDefault head
+                |> rgbPaletteColor
 
 
 colorPalette : ( Cubehelix.Color, List Cubehelix.Color )
@@ -388,18 +390,15 @@ imageHeader model =
         headerBackground =
             case colorPalette of
                 ( head, tail ) ->
-                    (::) head tail
-                        |> List.map (toRGB >> rgbTuple)
-                        |> List.getAt 3
-                        |> Maybe.withDefault (head |> (toRGB >> rgbTuple))
+                    tail |> List.getAt 3 |> Maybe.withDefault head |> rgbPaletteColor
 
         fontColor =
             case colorPalette of
                 ( head, tail ) ->
                     (::) head tail
-                        |> List.map (toRGB >> rgbTuple)
+                        |> List.map rgbPaletteColor
                         |> List.last
-                        |> Maybe.withDefault (head |> (toRGB >> rgbTuple))
+                        |> Maybe.withDefault (head |> rgbPaletteColor)
     in
     case model of
         SettingsView _ ->
@@ -440,7 +439,7 @@ imageHeader model =
 colorPicker updateMsg =
     case colorPalette of
         ( head, tail ) ->
-            (::) head tail |> List.map (toRGB >> rgbTuple >> (\rgbColor -> colorPickerBox rgbColor updateMsg))
+            (::) head tail |> List.map (rgbPaletteColor >> (\rgbColor -> colorPickerBox rgbColor updateMsg))
 
 
 colorPickerBox color colorChangeMsg =
