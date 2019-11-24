@@ -449,7 +449,11 @@ colorPickerBox colorChangeMsg color =
 
 
 editPreferencesView : Preferences -> Element Msg
-editPreferencesView ({ slideshowSpeed, backgroundColor, previewItemsPerRow } as preferences) =
+editPreferencesView preferences =
+    let
+        { slideshowSpeed, backgroundColor, previewItemsPerRow } =
+            preferences
+    in
     Element.el [ width fill, height fill, Background.color backgroundColor, Element.spacing 50, Element.padding 20 ] <|
         Element.column [ width Element.fill, Element.padding 35, Background.color <| rgba255 0 0 0 0.5, Element.spacing 10 ]
             [ Input.slider
@@ -513,7 +517,10 @@ editPreferencesView ({ slideshowSpeed, backgroundColor, previewItemsPerRow } as 
             ]
 
 
-filePreviewView : List ( ImageKey, ImageUrl ) -> { r | imagesPerRow : Int, backgroundColor : Element.Color } -> Element Msg
+filePreviewView :
+    List ( ImageKey, ImageUrl )
+    -> { r | imagesPerRow : Int, backgroundColor : Element.Color }
+    -> Element Msg
 filePreviewView images { imagesPerRow, backgroundColor } =
     List.greedyGroupsOf imagesPerRow images
         |> List.map
