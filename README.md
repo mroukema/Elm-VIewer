@@ -23,6 +23,8 @@ Runs in browser tab so it can be casted in background. Displays images from loca
   - [ ] More on screen controls
   - [ ] Design/style improvement
   - [ ] Explore use cases for an online version of application
+  - [ ] Notification when images conversion fails
+  - [ ] Grey-out / hide start slideshow button when no images
 
 ## Controls
 
