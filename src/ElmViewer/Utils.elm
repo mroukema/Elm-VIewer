@@ -1,4 +1,4 @@
-module Utils exposing
+module ElmViewer.Utils exposing
     ( Direction(..)
     , flip
     , getFromDict

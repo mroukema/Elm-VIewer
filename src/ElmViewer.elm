@@ -10,18 +10,7 @@ import Element.Background as Background
 import Element.Events exposing (onClick)
 import Element.Font as Font
 import Element.Input as Input
-import File exposing (File)
-import File.Select as Select
-import Html as Html exposing (Html)
-import Html.Attributes exposing (src, style)
-import Html.Events exposing (keyCode, on)
-import Json.Decode as Json
-import List.Extra as List
-import Palette.Cubehelix as Cubehelix
-import Task
-import Time
-import Url exposing (Url)
-import Utils
+import ElmViewer.Utils
     exposing
         ( Direction(..)
         , flip
@@ -33,6 +22,17 @@ import Utils
         , rgbPaletteColor
         , seconds
         )
+import File exposing (File)
+import File.Select as Select
+import Html as Html exposing (Html)
+import Html.Attributes exposing (src, style)
+import Html.Events exposing (keyCode, on)
+import Json.Decode as Json
+import List.Extra as List
+import Palette.Cubehelix as Cubehelix
+import Task
+import Time
+import Url exposing (Url)
 
 
 {-| Image viewing and slideshow program for local files
