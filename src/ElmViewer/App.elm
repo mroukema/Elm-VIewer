@@ -5,23 +5,13 @@ import Browser
 import Browser.Events as Browser
 import Color as Cubehelix exposing (toRGB)
 import Dict exposing (Dict)
-import Element exposing (Element, fill, height, px, rgb, rgba255, width)
+import Element exposing (Element, alignBottom, alignRight, alignTop, fill, height, inFront, px, rgb, rgba255, text, width)
 import Element.Background as Background
-import Element.Events exposing (onClick)
+import Element.Events exposing (onClick, onFocus)
 import Element.Font as Font
 import Element.Input as Input
-import ElmViewer.Utils
-    exposing
-        ( Direction(..)
-        , flip
-        , getFromDict
-        , isEsc
-        , isNavKey
-        , isSpace
-        , msgWhen
-        , rgbPaletteColor
-        , seconds
-        )
+import ElmViewer.Utils exposing (Direction(..), flip, getFromDict, isEsc, isNavKey, isSpace, msgWhen, rgbPaletteColor, seconds)
+import FeatherIcons as Icon
 import File exposing (File)
 import File.Select as Select
 import Html as Html exposing (Html)
@@ -30,6 +20,8 @@ import Html.Events exposing (keyCode, on)
 import Json.Decode as Json
 import List.Extra as List
 import Palette.Cubehelix as Cubehelix
+import Svg
+import Svg.Attributes as Svg
 import Task
 import Time
 import Url exposing (Url)
@@ -45,13 +37,13 @@ import Url exposing (Url)
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model Dict.empty defaultPreferences Preview, Cmd.none )
+    ( Model Dict.empty defaultPreferences previewCatalogState, Cmd.none )
 
 
 defaultPreferences : Preferences
 defaultPreferences =
     { slideshowSpeed = 3 |> seconds
-    , previewItemsPerRow = 8
+    , previewItemsPerRow = 4
     , backgroundColor = defaultBackground
     }
 
@@ -74,6 +66,11 @@ colorPalette =
 
         [] ->
             ( Cubehelix.fromRGB ( 1, 1, 1 ), [] )
+
+
+previewCatalogState : ViewState
+previewCatalogState =
+    Preview Catalog
 
 
 
@@ -115,6 +112,7 @@ Note: memoization makes this process more efficient than it may appear\_
 type ViewModel
     = PreviewView
         (List ( ImageKey, ImageUrl ))
+        (Maybe ( ImageKey, ImageUrl ))
         { imagesPerRow : Int
         , backgroundColor : Element.Color
         }
@@ -128,7 +126,7 @@ state data used by that scene.
 -}
 type ViewState
     = Slideshow SlideshowState
-    | Preview
+    | Preview PreviewState
     | Settings
 
 
@@ -140,6 +138,15 @@ Note: persisted data for scene not data required to render the scene
 -}
 type alias SlideshowState =
     { running : Bool, slidelist : List ImageKey }
+
+
+type PreviewState
+    = Catalog
+    | Focused FocusedImage
+
+
+type alias FocusedImage =
+    ImageKey
 
 
 type alias Data =
@@ -283,7 +290,7 @@ subscriptions model =
                         navigationListeners =
                             [ Browser.onKeyPress <| msgWhen isSpace (\_ -> togglePauseSlideshow currentState)
                             , Browser.onKeyUp <| msgWhen isNavKey (\dir -> stepSlideshow currentState dir)
-                            , Browser.onKeyUp <| msgWhen isEsc (\_ -> UpdateView Preview)
+                            , Browser.onKeyUp <| msgWhen isEsc (\_ -> UpdateView previewCatalogState)
                             ]
                     in
                     case currentState.running of
@@ -295,13 +302,13 @@ subscriptions model =
                         False ->
                             Sub.batch navigationListeners
 
-                Preview ->
+                Preview _ ->
                     Browser.onKeyPress <|
                         msgWhen isSpace
                             (always <| startSlideshow <| List.sort <| Dict.keys data)
 
                 Settings ->
-                    Browser.onKeyUp <| msgWhen isEsc (always <| UpdateView Preview)
+                    Browser.onKeyUp <| msgWhen isEsc (always <| UpdateView previewCatalogState)
 
 
 
@@ -333,14 +340,32 @@ viewSelector model =
                 Settings ->
                     SettingsView preferences
 
-                Preview ->
+                Preview Catalog ->
                     PreviewView imageList
-                        { imagesPerRow = preferences.previewItemsPerRow, backgroundColor = preferences.backgroundColor }
+                        Nothing
+                        { imagesPerRow = preferences.previewItemsPerRow
+                        , backgroundColor = preferences.backgroundColor
+                        }
+
+                Preview (Focused imageKey) ->
+                    let
+                        focusedImage =
+                            data
+                                |> Dict.get imageKey
+                                |> Maybe.andThen (Just << Tuple.pair imageKey)
+                    in
+                    PreviewView
+                        imageList
+                        focusedImage
+                        { imagesPerRow = preferences.previewItemsPerRow
+                        , backgroundColor = preferences.backgroundColor
+                        }
 
                 Slideshow { running, slidelist } ->
                     case List.filterMap (getFromDict data) slidelist of
                         [] ->
                             PreviewView imageList
+                                Nothing
                                 { imagesPerRow = preferences.previewItemsPerRow
                                 , backgroundColor = preferences.backgroundColor
                                 }
@@ -354,17 +379,21 @@ renderView model =
     let
         content =
             case model of
-                PreviewView images preferences ->
-                    Element.column [ width fill, height fill ]
+                PreviewView images focus preferences ->
+                    Element.column [ width fill, height fill, Background.color preferences.backgroundColor ]
                         [ imageHeader model
-                        , filePreviewView images preferences
+                        , filePreviewView images focus preferences
                         ]
 
                 SlideshowView currentImage { backgroundColor } ->
-                    slideshowView currentImage backgroundColor
+                    Element.el
+                        [ width fill, height fill, Background.color backgroundColor ]
+                        (slideshowView
+                            currentImage
+                        )
 
-                SettingsView preferences ->
-                    Element.column [ width fill, height fill ]
+                SettingsView ({ backgroundColor } as preferences) ->
+                    Element.column [ width fill, height fill, Background.color backgroundColor ]
                         [ imageHeader model
                         , editPreferencesView preferences
                         ]
@@ -395,13 +424,13 @@ imageHeader model =
                 [ "" |> Element.text
                 , "Preview View"
                     |> Element.text
-                    |> Element.el [ onClick <| UpdateView Preview, Font.color fontColor ]
+                    |> Element.el [ onClick <| UpdateView previewCatalogState, Font.color fontColor ]
                 , "Select Images"
                     |> Element.text
                     |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
                 ]
 
-        PreviewView imageUrls _ ->
+        PreviewView imageUrls _ _ ->
             Element.row [ width fill, Background.color <| headerBackground, Element.spaceEvenly, Element.padding 5 ]
                 [ "Start Slideshow"
                     |> Element.text
@@ -508,9 +537,16 @@ editPreferencesView preferences =
 
 filePreviewView :
     List ( ImageKey, ImageUrl )
+    -> Maybe ( ImageKey, ImageUrl )
     -> { r | imagesPerRow : Int, backgroundColor : Element.Color }
     -> Element Msg
-filePreviewView images { imagesPerRow, backgroundColor } =
+filePreviewView images focus { imagesPerRow, backgroundColor } =
+    let
+        overlay =
+            focus
+                |> Maybe.andThen (Just << expandedImage << Tuple.second)
+                |> Maybe.withDefault Element.none
+    in
     List.greedyGroupsOf imagesPerRow images
         |> List.map
             (\group ->
@@ -519,7 +555,7 @@ filePreviewView images { imagesPerRow, backgroundColor } =
                         imagesPerRow - List.length group
                 in
                 group
-                    |> List.map singleFileView
+                    |> List.map previewImage
                     |> flip List.append
                         (List.repeat
                             elementDeficit
@@ -527,7 +563,7 @@ filePreviewView images { imagesPerRow, backgroundColor } =
                         )
                     |> Element.row
                         [ Element.spaceEvenly
-                        , Element.spacing 5
+                        , Element.spacing 10
                         , width fill
                         ]
             )
@@ -537,14 +573,117 @@ filePreviewView images { imagesPerRow, backgroundColor } =
             , Background.color backgroundColor
             , Element.spacing 5
             , Element.padding 5
+            , Element.inFront overlay
             ]
+
+
+squareXIconControl msg =
+    Icon.xSquare
+        |> Icon.toHtml [ Svg.color "#C00000" ]
+        |> Element.html
+        |> Element.el
+            [ onClick msg
+            , width (24 |> px)
+            , height (24 |> px)
+            , alignRight
+            , Element.alpha 0.8
+            , Element.mouseOver
+                [ Element.alpha 1
+                , Element.scale 1.2
+                ]
+            ]
+
+
+expandIconControl msg =
+    Icon.maximize2
+        |> Icon.toHtml [ Svg.color "#0000C0" ]
+        |> Element.html
+        |> Element.el
+            [ onClick msg
+            , width (24 |> px)
+            , height (24 |> px)
+            , alignRight
+            , alignBottom
+            , Element.rotate (Basics.pi / 2)
+            , Element.alpha 0.8
+            , Element.mouseOver
+                [ Element.alpha 1
+                , Element.scale 1.2
+                , Element.rotate (Basics.pi / 2)
+                ]
+            ]
+
+
+previewImageControls imageKey =
+    Element.column
+        [ width fill
+        , height fill
+        , Element.padding 8
+        , Background.color <| Element.rgba 0.2 0.2 0.2 0.3
+        , Element.transparent <| True
+        , Element.mouseOver [ Element.transparent <| False ]
+        ]
+        [ squareXIconControl <| RemoveImage imageKey
+        , expandIconControl <| UpdateView <| Preview <| Focused imageKey
+        ]
+        |> Element.el [ width fill, height fill ]
+
+
+previewImage : ( ImageKey, ImageUrl ) -> Element Msg
+previewImage ( imageKey, imageSrc ) =
+    { src = imageSrc
+    , description = ""
+    }
+        |> Element.image
+            [ width fill
+            , height fill
+            , Element.centerX
+            , Element.centerY
+            , inFront <| previewImageControls imageKey
+            ]
+        |> Element.el
+            [ width fill
+            , height fill
+            , Element.mouseOver [ Element.scale 1.035 ]
+            ]
+
+
+expandedImage : ImageUrl -> Element Msg
+expandedImage imageUrl =
+    Element.el
+        [ width fill
+        , height fill
+        , Background.color (Element.rgba 0.1 0.1 0.1 0.9)
+        , Element.padding 24
+        , inFront <| expandIconControl <| UpdateView <| Preview Catalog
+        ]
+    <|
+        Element.el
+            [ width fill
+            , height fill
+            , inFront <| squareXIconControl <| UpdateView <| Preview Catalog
+            ]
+            (Element.html
+                (Html.img
+                    --  Black CSS Magic to make image fit within bounds at normal aspect ratio
+                    [ src imageUrl
+                    , style "position" "absolute"
+                    , style "object-fit" "contain"
+                    , style "height" "100%"
+                    , style "width" "100%"
+                    , style "max-height" "100%"
+                    , style "max-width" "100%"
+                    ]
+                    []
+                )
+            )
 
 
 {-| slideshowView
 Use of Html.img due to Element.img not respecting parent height with base64 encoded image
 -}
-slideshowView : String -> Element.Color -> Element Msg
-slideshowView imageUrl backgroundColor =
+slideshowView : String -> Element Msg
+slideshowView imageUrl =
     let
         url =
             imageUrl
@@ -553,7 +692,6 @@ slideshowView imageUrl backgroundColor =
         [ Element.clip
         , width fill
         , height fill
-        , Background.color backgroundColor
         ]
         (Element.html
             (Html.img
