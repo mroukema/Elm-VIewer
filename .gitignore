@@ -2,3 +2,4 @@
 /node_modules
 /build
 /elm.js
+src/ElmViewer/TestingImages.elm
