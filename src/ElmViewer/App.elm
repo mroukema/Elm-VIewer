@@ -358,7 +358,8 @@ encodeSaveData : Data -> Preferences -> String
 encodeSaveData data preferences =
     let
         catalogRecord =
-            [ ( "data", data |> Encode.dict identity Encode.string )
+            [ ( "version", 1 |> Encode.int )
+            , ( "data", data |> Encode.dict identity Encode.string )
             , ( "preferences", preferences |> preferencesEncoder )
             ]
     in
@@ -556,6 +557,7 @@ renderView model =
         |> Element.layout [ height fill, width fill ]
 
 
+imageHeader : ViewModel -> Element Msg
 imageHeader model =
     let
         headerBackground =
@@ -575,13 +577,19 @@ imageHeader model =
     case model of
         SettingsView _ ->
             Element.row [ width fill, Background.color <| headerBackground, Element.spaceEvenly, Element.padding 5 ]
-                [ "" |> Element.text
+                [ Element.text ""
                 , "Preview View"
                     |> Element.text
                     |> Element.el [ onClick <| UpdateView previewCatalogState, Font.color fontColor ]
                 , "Select Images"
                     |> Element.text
                     |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
+                , "Save"
+                    |> Element.text
+                    |> Element.el [ onClick SaveCatalog, Font.color fontColor ]
+                , "Load"
+                    |> Element.text
+                    |> Element.el [ onClick LoadCatalog, Font.color fontColor ]
                 ]
 
         PreviewView imageUrls _ _ ->
@@ -598,10 +606,10 @@ imageHeader model =
                 , "Select Images"
                     |> Element.text
                     |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
-                , "Download"
+                , "Save"
                     |> Element.text
                     |> Element.el [ onClick SaveCatalog, Font.color fontColor ]
-                , "Upload"
+                , "Load"
                     |> Element.text
                     |> Element.el [ onClick LoadCatalog, Font.color fontColor ]
                 ]
