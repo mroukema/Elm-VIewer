@@ -1,6 +1,6 @@
 module ElmViewer.App exposing (Model, Msg, init, subscriptions, update, view)
 
-import Basics exposing (not, pi)
+import Basics exposing (identity, not, pi)
 import Browser
 import Browser.Events as Browser
 import Color as Cubehelix exposing (toRGB)
@@ -40,11 +40,13 @@ import ElmViewer.Utils
         )
 import FeatherIcons as Icon
 import File exposing (File)
+import File.Download as Download
 import File.Select as Select
 import Html as Html exposing (Html)
 import Html.Attributes exposing (src, style)
 import Html.Events exposing (keyCode, on)
 import Json.Decode as Json
+import Json.Encode as Encode
 import List.Extra as List
 import Palette.Cubehelix as Cubehelix
 import Svg
@@ -206,6 +208,7 @@ type Msg
     | RemoveImage ImageKey
     | UpdateView ViewState
     | UpdatePreferences Preferences
+    | SaveCatalog
 
 
 updateSlideshow : SlideshowState -> Msg
@@ -302,6 +305,23 @@ update msg model =
                 Model data preferences _ ->
                     ( Model data preferences newState, Cmd.none )
 
+        SaveCatalog ->
+            case model of
+                Model data _ _ ->
+                    ( model, saveCatalog data )
+
+
+saveCatalog : Dict ImageKey ImageUrl -> Cmd Msg
+saveCatalog data =
+    Download.string "imagerState.json" "application/json" (stringDictToJson data)
+
+
+stringDictToJson : Dict String String -> String
+stringDictToJson data =
+    data
+        |> Encode.dict identity Encode.string
+        |> Encode.encode 2
+
 
 setStartingSlide : ImageKey -> List ImageKey -> List ImageKey
 setStartingSlide imageKey slides =
@@ -311,9 +331,9 @@ setStartingSlide imageKey slides =
         |> Maybe.withDefault slides
 
 
-openSlideshowWith : ImageKey -> (List ImageKey -> SlideshowState)
+openSlideshowWith : ImageKey -> (List ImageKey -> ViewState)
 openSlideshowWith startingImage =
-    setStartingSlide startingImage >> SlideshowState False
+    setStartingSlide startingImage >> SlideshowState False >> Slideshow
 
 
 
@@ -347,17 +367,13 @@ subscriptions model =
                 Preview (Focused imageKey) ->
                     Sub.batch
                         [ Browser.onKeyPress <|
-                            msgWhen isSpace <|
-                                \_ -> UpdateView <| Slideshow <| openSlideshowWith imageKey <| List.sort <| Dict.keys data
+                            msgWhen isSpace
+                                (\_ -> UpdateView <| openSlideshowWith imageKey <| List.sort <| Dict.keys data)
+                        , Browser.onKeyUp <| msgWhen isEsc <| \_ -> UpdateView <| Preview Catalog
+                        , Browser.onKeyUp <| msgWhen isArrowDown <| \_ -> UpdateView <| Preview Catalog
                         , Browser.onKeyUp <|
-                            msgWhen isEsc <|
-                                \_ -> UpdateView <| Preview Catalog
-                        , Browser.onKeyUp <|
-                            msgWhen isArrowDown <|
-                                \_ -> UpdateView <| Preview Catalog
-                        , Browser.onKeyUp <|
-                            msgWhen isArrowUp <|
-                                \_ -> UpdateView <| Slideshow <| openSlideshowWith imageKey <| List.sort <| Dict.keys data
+                            msgWhen isArrowUp
+                                (\_ -> UpdateView <| openSlideshowWith imageKey <| List.sort <| Dict.keys data)
                         ]
 
                 Preview Catalog ->
@@ -502,6 +518,9 @@ imageHeader model =
                 , "Select Images"
                     |> Element.text
                     |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
+                , "Download"
+                    |> Element.text
+                    |> Element.el [ onClick SaveCatalog, Font.color fontColor ]
                 ]
 
         _ ->
