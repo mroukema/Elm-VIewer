@@ -283,15 +283,13 @@ update msg model =
             , List.map insertImageFromFile (file :: otherFiles) |> Cmd.batch
             )
 
-        InsertImage filename result ->
-            case result of
-                Ok imageUrl ->
-                    case model of
-                        Model images preferences state ->
-                            ( Model (Dict.insert filename imageUrl images) preferences state, Cmd.none )
+        InsertImage filename (Ok imageUrl) ->
+            case model of
+                Model images preferences state ->
+                    ( Model (Dict.insert filename imageUrl images) preferences state, Cmd.none )
 
-                Err _ ->
-                    ( model, Cmd.none )
+        InsertImage filename (Err _) ->
+            ( model, Cmd.none )
 
         RemoveImage imageKey ->
             case model of
@@ -310,8 +308,8 @@ update msg model =
 
         SaveCatalog ->
             case model of
-                Model data _ _ ->
-                    ( model, saveCatalog data )
+                Model data preferences _ ->
+                    ( model, saveCatalog data preferences )
 
         LoadCatalog ->
             case model of
@@ -325,10 +323,10 @@ update msg model =
             case model of
                 Model data preferences viewState ->
                     let
-                        newCatalog =
-                            parseCatalog jsonString |> Maybe.withDefault data
+                        dataAndPreferences =
+                            decodeSaveData jsonString |> (Maybe.withDefault <| Model data preferences)
                     in
-                    ( Model newCatalog preferences viewState, Cmd.none )
+                    ( dataAndPreferences viewState, Cmd.none )
 
         CatalogDecoded (Err _) ->
             ( model, Cmd.none )
@@ -339,24 +337,62 @@ loadCatalog =
     Select.file [ "application/json" ] CatalogFileReceived
 
 
-saveCatalog : Dict ImageKey ImageUrl -> Cmd Msg
-saveCatalog data =
-    Download.string "imagerState.json" "application/json" (stringDictToJson data)
+saveCatalog : Data -> Preferences -> Cmd Msg
+saveCatalog data preferences =
+    Download.string "imagerState.json" "application/json" (encodeSaveData data preferences)
 
 
-parseCatalog : String -> Maybe (Dict ImageKey ImageUrl)
-parseCatalog jsonString =
+decodeSaveData : String -> Maybe (ViewState -> Model)
+decodeSaveData jsonString =
+    jsonString
+        |> Json.decodeString
+            (Json.map2
+                Model
+                (Json.field "data" (Json.keyValuePairs Json.string)
+                    |> Json.andThen (Json.succeed << Dict.fromList)
+                )
+                (Json.field "preferences" decodePreferences)
+            )
+        |> Result.andThen (Ok << Just)
+        |> Result.withDefault Nothing
+
+
+decodePreferences : Json.Decoder Preferences
+decodePreferences =
+    Json.map3
+        Preferences
+        (Json.field "slideshowSpeed" Json.float)
+        (Json.field "previewItemsPerRow" Json.int)
+        (Json.field "backgroundColor" (Json.succeed defaultBackground))
+
+
+decodeCatalog : String -> Maybe Data
+decodeCatalog jsonString =
     jsonString
         |> Json.decodeString (Json.keyValuePairs Json.string)
         |> Result.andThen (Ok << Just << Dict.fromList)
         |> Result.withDefault Nothing
 
 
-stringDictToJson : Dict String String -> String
-stringDictToJson data =
-    data
-        |> Encode.dict identity Encode.string
+encodeSaveData : Data -> Preferences -> String
+encodeSaveData data preferences =
+    let
+        catalogRecord =
+            [ ( "data", data |> Encode.dict identity Encode.string )
+            , ( "preferences", preferences |> encodePreferences )
+            ]
+    in
+    Encode.object catalogRecord
         |> Encode.encode 2
+
+
+encodePreferences : Preferences -> Encode.Value
+encodePreferences { slideshowSpeed, previewItemsPerRow, backgroundColor } =
+    Encode.object
+        [ ( "slideshowSpeed", slideshowSpeed |> Encode.float )
+        , ( "previewItemsPerRow", previewItemsPerRow |> Encode.int )
+        , ( "backgroundColor", "color" |> Encode.string )
+        ]
 
 
 setStartingSlide : ImageKey -> List ImageKey -> List ImageKey
