@@ -532,20 +532,26 @@ viewSelector model =
 renderView : ViewModel -> Html Msg
 renderView model =
     let
+        overlay =
+            case model of
+                PreviewView _ (Just ( imageKey, imageUrl )) _ ->
+                    expandedImage imageUrl
+
+                _ ->
+                    Element.none
+
         content =
             case model of
-                PreviewView images focus preferences ->
+                PreviewView images _ preferences ->
                     Element.column [ width fill, height fill, Background.color preferences.backgroundColor ]
                         [ imageHeader model
-                        , filePreviewView images focus preferences
+                        , filePreviewView images preferences
                         ]
 
                 SlideshowView currentImage { backgroundColor } ->
                     Element.el
                         [ width fill, height fill, Background.color backgroundColor ]
-                        (slideshowView
-                            currentImage
-                        )
+                        (slideshowView currentImage)
 
                 SettingsView ({ backgroundColor } as preferences) ->
                     Element.column [ width fill, height fill, Background.color (backgroundColor |> rgbPaletteColor) ]
@@ -554,7 +560,7 @@ renderView model =
                         ]
     in
     content
-        |> Element.layout [ height fill, width fill ]
+        |> Element.layout [ height fill, width fill, inFront <| overlay ]
 
 
 imageHeader : ViewModel -> Element Msg
@@ -711,16 +717,9 @@ editPreferencesView preferences =
 
 filePreviewView :
     List ( ImageKey, ImageUrl )
-    -> Maybe ( ImageKey, ImageUrl )
     -> { r | imagesPerRow : Int, backgroundColor : Element.Color }
     -> Element Msg
-filePreviewView images focus { imagesPerRow, backgroundColor } =
-    let
-        overlay =
-            focus
-                |> Maybe.andThen (Just << expandedImage << Tuple.second)
-                |> Maybe.withDefault Element.none
-    in
+filePreviewView images { imagesPerRow, backgroundColor } =
     List.greedyGroupsOf imagesPerRow images
         |> List.map
             (\group ->
@@ -747,7 +746,6 @@ filePreviewView images focus { imagesPerRow, backgroundColor } =
             , Background.color backgroundColor
             , Element.spacing 5
             , Element.padding 5
-            , Element.inFront overlay
             ]
 
 
