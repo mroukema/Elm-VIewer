@@ -267,6 +267,16 @@ insertImageFromFile file =
         (File.toUrl file)
 
 
+loadCatalog : Cmd Msg
+loadCatalog =
+    Select.file [ "application/json" ] CatalogFileReceived
+
+
+saveCatalog : Data -> Preferences -> Cmd Msg
+saveCatalog data preferences =
+    Download.string "imagerState.json" "application/json" (encodeSaveData data preferences)
+
+
 
 -- Update
 
@@ -331,48 +341,17 @@ update msg model =
             ( model, Cmd.none )
 
 
-loadCatalog : Cmd Msg
-loadCatalog =
-    Select.file [ "application/json" ] CatalogFileReceived
-
-
-saveCatalog : Data -> Preferences -> Cmd Msg
-saveCatalog data preferences =
-    Download.string "imagerState.json" "application/json" (encodeSaveData data preferences)
-
-
 decodeSaveData : String -> Maybe (ViewState -> Model)
 decodeSaveData jsonString =
     jsonString
         |> Json.decodeString
             (Json.map2
                 Model
-                (Json.field "data" decodeCatalog)
-                (Json.field "preferences" decodePreferences)
+                (Json.field "data" catalogDecoder)
+                (Json.field "preferences" preferencesDecoder)
             )
         |> Result.andThen (Ok << Just)
         |> Result.withDefault Nothing
-
-
-decodePreferences : Json.Decoder Preferences
-decodePreferences =
-    Json.map3
-        Preferences
-        (Json.field "slideshowSpeed" Json.float)
-        (Json.field "previewItemsPerRow" Json.int)
-        (Json.field "backgroundColor" decodeHexColor)
-
-
-decodeHexColor : Json.Decoder Color
-decodeHexColor =
-    Json.string
-        |> Json.andThen (always <| Json.succeed defaultBackground)
-
-
-decodeCatalog : Json.Decoder Data
-decodeCatalog =
-    Json.keyValuePairs Json.string
-        |> Json.andThen (Json.succeed << Dict.fromList)
 
 
 encodeSaveData : Data -> Preferences -> String
@@ -380,20 +359,11 @@ encodeSaveData data preferences =
     let
         catalogRecord =
             [ ( "data", data |> Encode.dict identity Encode.string )
-            , ( "preferences", preferences |> encodePreferences )
+            , ( "preferences", preferences |> preferencesEncoder )
             ]
     in
     Encode.object catalogRecord
         |> Encode.encode 2
-
-
-encodePreferences : Preferences -> Encode.Value
-encodePreferences { slideshowSpeed, previewItemsPerRow, backgroundColor } =
-    Encode.object
-        [ ( "slideshowSpeed", slideshowSpeed |> Encode.float )
-        , ( "previewItemsPerRow", previewItemsPerRow |> Encode.int )
-        , ( "backgroundColor", backgroundColor |> Color.toHex |> Encode.string )
-        ]
 
 
 setStartingSlide : ImageKey -> List ImageKey -> List ImageKey
@@ -456,6 +426,40 @@ subscriptions model =
 
                 Settings ->
                     Browser.onKeyUp <| msgWhen isEsc (always <| UpdateView previewCatalogState)
+
+
+
+-- Encodings
+
+
+preferencesDecoder : Json.Decoder Preferences
+preferencesDecoder =
+    Json.map3
+        Preferences
+        (Json.field "slideshowSpeed" Json.float)
+        (Json.field "previewItemsPerRow" Json.int)
+        (Json.field "backgroundColor" hexColorDecoder)
+
+
+hexColorDecoder : Json.Decoder Color
+hexColorDecoder =
+    Json.string
+        |> Json.andThen (always <| Json.succeed defaultBackground)
+
+
+catalogDecoder : Json.Decoder Data
+catalogDecoder =
+    Json.keyValuePairs Json.string
+        |> Json.andThen (Json.succeed << Dict.fromList)
+
+
+preferencesEncoder : Preferences -> Encode.Value
+preferencesEncoder { slideshowSpeed, previewItemsPerRow, backgroundColor } =
+    Encode.object
+        [ ( "slideshowSpeed", slideshowSpeed |> Encode.float )
+        , ( "previewItemsPerRow", previewItemsPerRow |> Encode.int )
+        , ( "backgroundColor", backgroundColor |> Color.toHex |> Encode.string )
+        ]
 
 
 
