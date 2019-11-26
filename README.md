@@ -12,29 +12,40 @@ Runs in browser tab so it can be casted in background. Displays images from loca
 
   - [ ] Handle ImageKey conflicts when ImageUrl is different
   - [ ] Detect and remove images with duplicate image data
-  - [ ] Improve on screen controls for removing images
+  - [x] Improve on screen controls for removing images
   - [ ] Allow for image transformations (rotation, mirror, zoom)
   - [ ] Collections of images
-  - [ ] Persistence between browser opening/closing
+  - [x] Persistence via saveFile
   - [ ] Secure any persisted data
   - [ ] Separate URLs for different views
   - [ ] Upgrade to Browser.application; handle URLs
   - [ ] Make keyboard controls configurable
-  - [ ] More on screen controls
+  - [x] More on screen controls
+    - [ ] Still room for more
   - [ ] Design/style improvement
+    - Some progress made
   - [ ] Explore use cases for an online version of application
   - [ ] Notification when images conversion fails
   - [ ] Grey-out / hide start slideshow button when no images
 
-## Controls
+## Keyboard Controls
 
 ### Slideshow View
-- Left/Right Arrow Keys : Cycle images forwards/backwards
+- Left/Right Arrow : Cycle images forwards/backwards
+- Arrow Down : Return to Preview Catalog View
 - Space : Pause/Unpause Slideshow
 - Escape : Return to preview view
 
 ### Preview View
+
+#### Catalog View
 - Space : Start slideshow
+
+#### Focused Image
+- ArrowUp : Open slideshow (paused) at focused image
+- Arrow Down : Return to catalog view
+- Escape : Return to catalog view
+
 
 ### PreferencesView
 - Escape : Return to preview view
