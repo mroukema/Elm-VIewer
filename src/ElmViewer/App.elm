@@ -209,6 +209,9 @@ type Msg
     | UpdateView ViewState
     | UpdatePreferences Preferences
     | SaveCatalog
+    | LoadCatalog
+    | CatalogFileReceived File
+    | CatalogDecoded (Result () ImageKey)
 
 
 updateSlideshow : SlideshowState -> Msg
@@ -310,10 +313,43 @@ update msg model =
                 Model data _ _ ->
                     ( model, saveCatalog data )
 
+        LoadCatalog ->
+            case model of
+                Model data _ _ ->
+                    ( model, loadCatalog )
+
+        CatalogFileReceived file ->
+            ( model, Task.attempt CatalogDecoded (File.toString file) )
+
+        CatalogDecoded (Ok jsonString) ->
+            case model of
+                Model data preferences viewState ->
+                    let
+                        newCatalog =
+                            parseCatalog jsonString |> Maybe.withDefault data
+                    in
+                    ( Model newCatalog preferences viewState, Cmd.none )
+
+        CatalogDecoded (Err _) ->
+            ( model, Cmd.none )
+
+
+loadCatalog : Cmd Msg
+loadCatalog =
+    Select.file [ "application/json" ] CatalogFileReceived
+
 
 saveCatalog : Dict ImageKey ImageUrl -> Cmd Msg
 saveCatalog data =
     Download.string "imagerState.json" "application/json" (stringDictToJson data)
+
+
+parseCatalog : String -> Maybe (Dict ImageKey ImageUrl)
+parseCatalog jsonString =
+    jsonString
+        |> Json.decodeString (Json.keyValuePairs Json.string)
+        |> Result.andThen (Ok << Just << Dict.fromList)
+        |> Result.withDefault Nothing
 
 
 stringDictToJson : Dict String String -> String
@@ -521,6 +557,9 @@ imageHeader model =
                 , "Download"
                     |> Element.text
                     |> Element.el [ onClick SaveCatalog, Font.color fontColor ]
+                , "Upload"
+                    |> Element.text
+                    |> Element.el [ onClick LoadCatalog, Font.color fontColor ]
                 ]
 
         _ ->
