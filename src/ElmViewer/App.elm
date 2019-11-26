@@ -105,7 +105,7 @@ defaultSlideshowMap =
 
 
 defaultPreferencesMap =
-    { exit = [ "Escape" ]
+    { exit = [ "Escape", "ArrowDown" ]
     }
 
 
@@ -504,11 +504,38 @@ subscriptions model =
 
 
 preferencesEncoder : Preferences -> Encode.Value
-preferencesEncoder { slideshowSpeed, previewItemsPerRow, backgroundColor } =
+preferencesEncoder { slideshowSpeed, previewItemsPerRow, backgroundColor, keyboardControls } =
     Encode.object
         [ ( "slideshowSpeed", slideshowSpeed |> Encode.float )
         , ( "previewItemsPerRow", previewItemsPerRow |> Encode.int )
         , ( "backgroundColor", backgroundColor |> Color.toHex |> Encode.string )
+        , ( "keyboardControls", keyboardControls |> keyboardControlsEncoder )
+        ]
+
+
+keyboardControlsEncoder : KeyboardMappings -> Encode.Value
+keyboardControlsEncoder { slideshowMap, preferencesMap, previewMap } =
+    Encode.object
+        [ ( "slideshowMap"
+          , Encode.object
+                [ ( "exit", Encode.list Encode.string slideshowMap.exit )
+                , ( "next", Encode.list Encode.string slideshowMap.next )
+                , ( "prev", Encode.list Encode.string slideshowMap.prev )
+                , ( "toggle", Encode.list Encode.string slideshowMap.toggle )
+                ]
+          )
+        , ( "preferencesMap"
+          , Encode.object
+                [ ( "exit", Encode.list Encode.string preferencesMap.exit )
+                ]
+          )
+        , ( "previewsMap"
+          , Encode.object
+                [ ( "startSlideshow", Encode.list Encode.string previewMap.startSlideshow )
+                , ( "openCurrent", Encode.list Encode.string previewMap.openCurrent )
+                , ( "closeCurrent", Encode.list Encode.string previewMap.closeCurrent )
+                ]
+          )
         ]
 
 
