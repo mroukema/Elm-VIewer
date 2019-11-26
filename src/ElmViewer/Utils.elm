@@ -2,6 +2,8 @@ module ElmViewer.Utils exposing
     ( Direction(..)
     , flip
     , getFromDict
+    , isArrowDown
+    , isArrowUp
     , isEsc
     , isNavKey
     , isSpace
@@ -86,6 +88,26 @@ isEsc string =
 
         _ ->
             Json.fail "Not the Escape Key"
+
+
+isArrowDown : String -> Json.Decoder String
+isArrowDown string =
+    case string of
+        "ArrowDown" ->
+            Json.succeed string
+
+        _ ->
+            Json.fail "Not the Down Key"
+
+
+isArrowUp : String -> Json.Decoder String
+isArrowUp string =
+    case string of
+        "ArrowUp" ->
+            Json.succeed string
+
+        _ ->
+            Json.fail "Not the Down Key"
 
 
 isNavKey : String -> Json.Decoder Direction

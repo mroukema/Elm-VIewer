@@ -5,12 +5,39 @@ import Browser
 import Browser.Events as Browser
 import Color as Cubehelix exposing (toRGB)
 import Dict exposing (Dict)
-import Element exposing (Element, alignBottom, alignRight, alignTop, fill, height, inFront, px, rgb, rgba255, text, width)
+import Element
+    exposing
+        ( Element
+        , alignBottom
+        , alignRight
+        , alignTop
+        , fill
+        , height
+        , inFront
+        , px
+        , rgb
+        , rgba255
+        , text
+        , width
+        )
 import Element.Background as Background
 import Element.Events exposing (onClick, onFocus)
 import Element.Font as Font
 import Element.Input as Input
-import ElmViewer.Utils exposing (Direction(..), flip, getFromDict, isEsc, isNavKey, isSpace, msgWhen, rgbPaletteColor, seconds)
+import ElmViewer.Utils
+    exposing
+        ( Direction(..)
+        , flip
+        , getFromDict
+        , isArrowDown
+        , isArrowUp
+        , isEsc
+        , isNavKey
+        , isSpace
+        , msgWhen
+        , rgbPaletteColor
+        , seconds
+        )
 import FeatherIcons as Icon
 import File exposing (File)
 import File.Select as Select
@@ -276,6 +303,19 @@ update msg model =
                     ( Model data preferences newState, Cmd.none )
 
 
+setStartingSlide : ImageKey -> List ImageKey -> List ImageKey
+setStartingSlide imageKey slides =
+    slides
+        |> List.splitWhen ((==) imageKey)
+        |> Maybe.andThen (\( head, tail ) -> List.append tail head |> Just)
+        |> Maybe.withDefault slides
+
+
+openSlideshowWith : ImageKey -> (List ImageKey -> SlideshowState)
+openSlideshowWith startingImage =
+    setStartingSlide startingImage >> SlideshowState False
+
+
 
 -- Subscriptions
 
@@ -288,24 +328,42 @@ subscriptions model =
                 Slideshow currentState ->
                     let
                         navigationListeners =
-                            [ Browser.onKeyPress <| msgWhen isSpace (\_ -> togglePauseSlideshow currentState)
-                            , Browser.onKeyUp <| msgWhen isNavKey (\dir -> stepSlideshow currentState dir)
-                            , Browser.onKeyUp <| msgWhen isEsc (\_ -> UpdateView previewCatalogState)
+                            [ Browser.onKeyPress <| msgWhen isSpace <| \_ -> togglePauseSlideshow currentState
+                            , Browser.onKeyUp <| msgWhen isNavKey <| \dir -> stepSlideshow currentState dir
+                            , Browser.onKeyUp <| msgWhen isEsc <| \_ -> UpdateView previewCatalogState
+                            , Browser.onKeyUp <| msgWhen isArrowDown <| \_ -> UpdateView (Preview Catalog)
                             ]
                     in
                     case currentState.running of
                         True ->
                             navigationListeners
-                                |> (::) (Time.every slideshowSpeed (\_ -> stepSlideshow currentState Forward))
+                                |> (::) (Time.every slideshowSpeed <| \_ -> stepSlideshow currentState Forward)
                                 |> Sub.batch
 
                         False ->
-                            Sub.batch navigationListeners
+                            navigationListeners
+                                |> Sub.batch
 
-                Preview _ ->
+                Preview (Focused imageKey) ->
+                    Sub.batch
+                        [ Browser.onKeyPress <|
+                            msgWhen isSpace <|
+                                \_ -> UpdateView <| Slideshow <| openSlideshowWith imageKey <| List.sort <| Dict.keys data
+                        , Browser.onKeyUp <|
+                            msgWhen isEsc <|
+                                \_ -> UpdateView <| Preview Catalog
+                        , Browser.onKeyUp <|
+                            msgWhen isArrowDown <|
+                                \_ -> UpdateView <| Preview Catalog
+                        , Browser.onKeyUp <|
+                            msgWhen isArrowUp <|
+                                \_ -> UpdateView <| Slideshow <| openSlideshowWith imageKey <| List.sort <| Dict.keys data
+                        ]
+
+                Preview Catalog ->
                     Browser.onKeyPress <|
-                        msgWhen isSpace
-                            (always <| startSlideshow <| List.sort <| Dict.keys data)
+                        msgWhen isSpace <|
+                            \_ -> Dict.keys data |> List.sort |> startSlideshow
 
                 Settings ->
                     Browser.onKeyUp <| msgWhen isEsc (always <| UpdateView previewCatalogState)
@@ -578,7 +636,7 @@ filePreviewView images focus { imagesPerRow, backgroundColor } =
 
 
 squareXIconControl msg =
-    Icon.xSquare
+    Icon.x
         |> Icon.toHtml [ Svg.color "#C00000" ]
         |> Element.html
         |> Element.el
@@ -655,7 +713,6 @@ expandedImage imageUrl =
         , height fill
         , Background.color (Element.rgba 0.1 0.1 0.1 0.9)
         , Element.padding 24
-        , inFront <| expandIconControl <| UpdateView <| Preview Catalog
         ]
     <|
         Element.el
@@ -707,16 +764,3 @@ slideshowView imageUrl =
                 []
             )
         )
-
-
-singleFileView ( imageKey, imageSrc ) =
-    Element.image
-        [ width fill
-        , height fill
-        , Element.centerX
-        , Element.centerY
-        , onClick <| RemoveImage imageKey
-        ]
-        { src = imageSrc
-        , description = ""
-        }
