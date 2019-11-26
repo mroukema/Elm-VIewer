@@ -26,14 +26,8 @@ import Element.Font as Font
 import Element.Input as Input
 import ElmViewer.Utils
     exposing
-        ( Direction(..)
-        , flip
+        ( flip
         , getFromDict
-        , isArrowDown
-        , isArrowUp
-        , isEsc
-        , isNavKey
-        , isSpace
         , msgWhen
         , rgbPaletteColor
         , seconds
@@ -251,6 +245,11 @@ type alias PreviewMap =
     , closeCurrent : List String
     , startSlideshow : List String
     }
+
+
+type Direction
+    = Forward
+    | Backward
 
 
 
