@@ -75,9 +75,26 @@ rgbPaletteColor =
 -- Decoders
 
 
-msgWhen : (String -> Json.Decoder b) -> (b -> msg) -> Json.Decoder msg
-msgWhen keyDecoder msg =
-    Json.map msg (Json.field "key" Json.string |> Json.andThen keyDecoder)
+msgWhen : List String -> (String -> msg) -> Json.Decoder msg
+msgWhen keys msg =
+    Json.map msg (Json.field "key" Json.string |> Json.andThen (keyMatchDecoder keys))
+
+
+keyMatchDecoder : List String -> String -> Json.Decoder String
+keyMatchDecoder stringList key =
+    case List.member key stringList of
+        True ->
+            Json.succeed key
+
+        False ->
+            Json.fail key
+
+
+
+--
+-- msgWhen : (String -> Json.Decoder b) -> (b -> msg) -> Json.Decoder msg
+-- msgWhen keyDecoder msg =
+--     Json.map msg (Json.field "key" Json.string |> Json.andThen keyDecoder)
 
 
 isEsc : String -> Json.Decoder String

@@ -74,6 +74,7 @@ defaultPreferences =
     { slideshowSpeed = 3 |> seconds
     , previewItemsPerRow = 4
     , backgroundColor = defaultBackground
+    , keyboardControls = defaultKeyboardMappings
     }
 
 
@@ -99,6 +100,34 @@ colorPalette =
 previewCatalogState : ViewState
 previewCatalogState =
     Preview Catalog
+
+
+defaultSlideshowMap =
+    { next = [ "ArrowLeft" ]
+    , prev = [ "ArrowRight" ]
+    , exit = [ "Escape", "ArrowDown" ]
+    , toggle = [ " " ]
+    }
+
+
+defaultPreferencesMap =
+    { exit = [ "Escape" ]
+    }
+
+
+defaultPreviewMap =
+    { openCurrent = [ "ArrowUp" ]
+    , closeCurrent = [ "ArrowDown", "Escape" ]
+    , startSlideshow = [ " " ]
+    }
+
+
+defaultKeyboardMappings : KeyboardMappings
+defaultKeyboardMappings =
+    { slideshowMap = defaultSlideshowMap
+    , preferencesMap = defaultPreferencesMap
+    , previewMap = defaultPreviewMap
+    }
 
 
 
@@ -185,6 +214,7 @@ type alias Preferences =
     { slideshowSpeed : Float
     , previewItemsPerRow : Int
     , backgroundColor : Color
+    , keyboardControls : KeyboardMappings
     }
 
 
@@ -194,6 +224,33 @@ type alias ImageKey =
 
 type alias ImageUrl =
     String
+
+
+type alias KeyboardMappings =
+    { slideshowMap : SlideshowMap
+    , preferencesMap : PreferencesMap
+    , previewMap : PreviewMap
+    }
+
+
+type alias SlideshowMap =
+    { next : List String
+    , prev : List String
+    , exit : List String
+    , toggle : List String
+    }
+
+
+type alias PreferencesMap =
+    { exit : List String
+    }
+
+
+type alias PreviewMap =
+    { openCurrent : List String
+    , closeCurrent : List String
+    , startSlideshow : List String
+    }
 
 
 
@@ -387,15 +444,18 @@ openSlideshowWith startingImage =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     case model of
-        Model data { slideshowSpeed } state ->
+        Model data { slideshowSpeed, keyboardControls } state ->
             case state of
                 Slideshow currentState ->
                     let
+                        controls =
+                            keyboardControls.slideshowMap
+
                         navigationListeners =
-                            [ Browser.onKeyPress <| msgWhen isSpace <| \_ -> togglePauseSlideshow currentState
-                            , Browser.onKeyUp <| msgWhen isNavKey <| \dir -> stepSlideshow currentState dir
-                            , Browser.onKeyUp <| msgWhen isEsc <| \_ -> UpdateView previewCatalogState
-                            , Browser.onKeyUp <| msgWhen isArrowDown <| \_ -> UpdateView (Preview Catalog)
+                            [ Browser.onKeyPress <| msgWhen controls.toggle <| \_ -> togglePauseSlideshow currentState
+                            , Browser.onKeyUp <| msgWhen controls.next <| \_ -> stepSlideshow currentState Forward
+                            , Browser.onKeyUp <| msgWhen controls.prev <| \_ -> stepSlideshow currentState Backward
+                            , Browser.onKeyUp <| msgWhen controls.exit <| \_ -> UpdateView (Preview Catalog)
                             ]
                     in
                     case currentState.running of
@@ -409,37 +469,58 @@ subscriptions model =
                                 |> Sub.batch
 
                 Preview (Focused imageKey) ->
+                    let
+                        controls =
+                            keyboardControls.previewMap
+                    in
                     Sub.batch
                         [ Browser.onKeyPress <|
-                            msgWhen isSpace
+                            msgWhen controls.startSlideshow
                                 (\_ -> UpdateView <| openSlideshowWith imageKey <| List.sort <| Dict.keys data)
-                        , Browser.onKeyUp <| msgWhen isEsc <| \_ -> UpdateView <| Preview Catalog
-                        , Browser.onKeyUp <| msgWhen isArrowDown <| \_ -> UpdateView <| Preview Catalog
+                        , Browser.onKeyUp <| msgWhen controls.closeCurrent <| \_ -> UpdateView <| Preview Catalog
                         , Browser.onKeyUp <|
-                            msgWhen isArrowUp
+                            msgWhen controls.openCurrent
                                 (\_ -> UpdateView <| openSlideshowWith imageKey <| List.sort <| Dict.keys data)
                         ]
 
                 Preview Catalog ->
+                    let
+                        controls =
+                            keyboardControls.previewMap
+                    in
                     Browser.onKeyPress <|
-                        msgWhen isSpace <|
+                        msgWhen controls.startSlideshow <|
                             \_ -> Dict.keys data |> List.sort |> startSlideshow
 
                 Settings ->
-                    Browser.onKeyUp <| msgWhen isEsc (always <| UpdateView previewCatalogState)
+                    let
+                        controls =
+                            keyboardControls.preferencesMap
+                    in
+                    Browser.onKeyUp <| msgWhen controls.exit (always <| UpdateView previewCatalogState)
 
 
 
 -- Encodings
 
 
+preferencesEncoder : Preferences -> Encode.Value
+preferencesEncoder { slideshowSpeed, previewItemsPerRow, backgroundColor } =
+    Encode.object
+        [ ( "slideshowSpeed", slideshowSpeed |> Encode.float )
+        , ( "previewItemsPerRow", previewItemsPerRow |> Encode.int )
+        , ( "backgroundColor", backgroundColor |> Color.toHex |> Encode.string )
+        ]
+
+
 preferencesDecoder : Json.Decoder Preferences
 preferencesDecoder =
-    Json.map3
+    Json.map4
         Preferences
         (Json.field "slideshowSpeed" Json.float)
         (Json.field "previewItemsPerRow" Json.int)
         (Json.field "backgroundColor" hexColorDecoder)
+        (Json.field "keyboardControls" keyboardMappingDecoder)
 
 
 hexColorDecoder : Json.Decoder Color
@@ -454,13 +535,9 @@ catalogDecoder =
         |> Json.andThen (Json.succeed << Dict.fromList)
 
 
-preferencesEncoder : Preferences -> Encode.Value
-preferencesEncoder { slideshowSpeed, previewItemsPerRow, backgroundColor } =
-    Encode.object
-        [ ( "slideshowSpeed", slideshowSpeed |> Encode.float )
-        , ( "previewItemsPerRow", previewItemsPerRow |> Encode.int )
-        , ( "backgroundColor", backgroundColor |> Color.toHex |> Encode.string )
-        ]
+keyboardMappingDecoder : Json.Decoder KeyboardMappings
+keyboardMappingDecoder =
+    Json.succeed defaultKeyboardMappings
 
 
 
