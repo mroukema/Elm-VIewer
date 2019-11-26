@@ -3,7 +3,7 @@ module ElmViewer.App exposing (Model, Msg, init, subscriptions, update, view)
 import Basics exposing (identity, not, pi)
 import Browser
 import Browser.Events as Browser
-import Color as Cubehelix exposing (toRGB)
+import Color as Color exposing (Color, toRGB)
 import Dict exposing (Dict)
 import Element
     exposing
@@ -77,24 +77,23 @@ defaultPreferences =
     }
 
 
-defaultBackground : Element.Color
+defaultBackground : Color
 defaultBackground =
     case colorPalette of
         ( head, tail ) ->
             tail
                 |> List.getAt 1
                 |> Maybe.withDefault head
-                |> rgbPaletteColor
 
 
-colorPalette : ( Cubehelix.Color, List Cubehelix.Color )
+colorPalette : ( Color, List Color )
 colorPalette =
     case Cubehelix.generate 20 of
         head :: tail ->
             ( head, tail )
 
         [] ->
-            ( Cubehelix.fromRGB ( 1, 1, 1 ), [] )
+            ( Color.fromRGB ( 1, 1, 1 ), [] )
 
 
 previewCatalogState : ViewState
@@ -185,7 +184,7 @@ type alias Data =
 type alias Preferences =
     { slideshowSpeed : Float
     , previewItemsPerRow : Int
-    , backgroundColor : Element.Color
+    , backgroundColor : Color
     }
 
 
@@ -348,9 +347,7 @@ decodeSaveData jsonString =
         |> Json.decodeString
             (Json.map2
                 Model
-                (Json.field "data" (Json.keyValuePairs Json.string)
-                    |> Json.andThen (Json.succeed << Dict.fromList)
-                )
+                (Json.field "data" decodeCatalog)
                 (Json.field "preferences" decodePreferences)
             )
         |> Result.andThen (Ok << Just)
@@ -363,15 +360,19 @@ decodePreferences =
         Preferences
         (Json.field "slideshowSpeed" Json.float)
         (Json.field "previewItemsPerRow" Json.int)
-        (Json.field "backgroundColor" (Json.succeed defaultBackground))
+        (Json.field "backgroundColor" decodeHexColor)
 
 
-decodeCatalog : String -> Maybe Data
-decodeCatalog jsonString =
-    jsonString
-        |> Json.decodeString (Json.keyValuePairs Json.string)
-        |> Result.andThen (Ok << Just << Dict.fromList)
-        |> Result.withDefault Nothing
+decodeHexColor : Json.Decoder Color
+decodeHexColor =
+    Json.string
+        |> Json.andThen (always <| Json.succeed defaultBackground)
+
+
+decodeCatalog : Json.Decoder Data
+decodeCatalog =
+    Json.keyValuePairs Json.string
+        |> Json.andThen (Json.succeed << Dict.fromList)
 
 
 encodeSaveData : Data -> Preferences -> String
@@ -391,7 +392,7 @@ encodePreferences { slideshowSpeed, previewItemsPerRow, backgroundColor } =
     Encode.object
         [ ( "slideshowSpeed", slideshowSpeed |> Encode.float )
         , ( "previewItemsPerRow", previewItemsPerRow |> Encode.int )
-        , ( "backgroundColor", "color" |> Encode.string )
+        , ( "backgroundColor", backgroundColor |> Color.toHex |> Encode.string )
         ]
 
 
@@ -481,6 +482,9 @@ viewSelector model =
             let
                 imageList =
                     Dict.toList data
+
+                backgroundColor =
+                    preferences.backgroundColor |> rgbPaletteColor
             in
             case viewState of
                 Settings ->
@@ -490,7 +494,7 @@ viewSelector model =
                     PreviewView imageList
                         Nothing
                         { imagesPerRow = preferences.previewItemsPerRow
-                        , backgroundColor = preferences.backgroundColor
+                        , backgroundColor = backgroundColor
                         }
 
                 Preview (Focused imageKey) ->
@@ -504,7 +508,7 @@ viewSelector model =
                         imageList
                         focusedImage
                         { imagesPerRow = preferences.previewItemsPerRow
-                        , backgroundColor = preferences.backgroundColor
+                        , backgroundColor = backgroundColor
                         }
 
                 Slideshow { running, slidelist } ->
@@ -513,11 +517,11 @@ viewSelector model =
                             PreviewView imageList
                                 Nothing
                                 { imagesPerRow = preferences.previewItemsPerRow
-                                , backgroundColor = preferences.backgroundColor
+                                , backgroundColor = backgroundColor
                                 }
 
                         firstImage :: images ->
-                            SlideshowView firstImage { backgroundColor = preferences.backgroundColor }
+                            SlideshowView firstImage { backgroundColor = backgroundColor }
 
 
 renderView : ViewModel -> Html Msg
@@ -539,7 +543,7 @@ renderView model =
                         )
 
                 SettingsView ({ backgroundColor } as preferences) ->
-                    Element.column [ width fill, height fill, Background.color backgroundColor ]
+                    Element.column [ width fill, height fill, Background.color (backgroundColor |> rgbPaletteColor) ]
                         [ imageHeader model
                         , editPreferencesView preferences
                         ]
@@ -611,11 +615,17 @@ colorPicker updateMsg =
         ( head, tail ) ->
             tail
                 |> (::) head
-                |> List.map (rgbPaletteColor >> colorPickerBox updateMsg)
+                |> List.map (colorPickerBox updateMsg)
 
 
 colorPickerBox colorChangeMsg color =
-    Element.el [ Background.color color, width fill, height fill, onClick (colorChangeMsg color) ] <| Element.column [] []
+    Element.el
+        [ Background.color (color |> rgbPaletteColor)
+        , width fill
+        , height fill
+        , onClick (colorChangeMsg color)
+        ]
+        Element.none
 
 
 editPreferencesView : Preferences -> Element Msg
@@ -624,7 +634,7 @@ editPreferencesView preferences =
         { slideshowSpeed, backgroundColor, previewItemsPerRow } =
             preferences
     in
-    Element.el [ width fill, height fill, Background.color backgroundColor, Element.spacing 50, Element.padding 20 ] <|
+    Element.el [ width fill, height fill, Background.color (backgroundColor |> rgbPaletteColor), Element.spacing 50, Element.padding 20 ] <|
         Element.column [ width Element.fill, Element.padding 35, Background.color <| rgba255 0 0 0 0.5, Element.spacing 10 ]
             [ Input.slider
                 [ width <| Element.fillPortion 4
