@@ -513,6 +513,16 @@ preferencesEncoder { slideshowSpeed, previewItemsPerRow, backgroundColor, keyboa
         ]
 
 
+preferencesDecoder : Json.Decoder Preferences
+preferencesDecoder =
+    Json.map4
+        Preferences
+        (Json.field "slideshowSpeed" Json.float)
+        (Json.field "previewItemsPerRow" Json.int)
+        (Json.field "backgroundColor" hexColorDecoder)
+        (Json.field "keyboardControls" keyboardControlsDecoder)
+
+
 keyboardControlsEncoder : KeyboardMappings -> Encode.Value
 keyboardControlsEncoder { slideshowMap, preferencesMap, previewMap } =
     Encode.object
@@ -524,12 +534,12 @@ keyboardControlsEncoder { slideshowMap, preferencesMap, previewMap } =
                 , ( "toggle", Encode.list Encode.string slideshowMap.toggle )
                 ]
           )
-        , ( "preferencesMap"
+        , ( "preferenceMap"
           , Encode.object
                 [ ( "exit", Encode.list Encode.string preferencesMap.exit )
                 ]
           )
-        , ( "previewsMap"
+        , ( "previewMap"
           , Encode.object
                 [ ( "startSlideshow", Encode.list Encode.string previewMap.startSlideshow )
                 , ( "openCurrent", Encode.list Encode.string previewMap.openCurrent )
@@ -539,14 +549,31 @@ keyboardControlsEncoder { slideshowMap, preferencesMap, previewMap } =
         ]
 
 
-preferencesDecoder : Json.Decoder Preferences
-preferencesDecoder =
-    Json.map4
-        Preferences
-        (Json.field "slideshowSpeed" Json.float)
-        (Json.field "previewItemsPerRow" Json.int)
-        (Json.field "backgroundColor" hexColorDecoder)
-        (Json.field "keyboardControls" keyboardMappingDecoder)
+keyboardControlsDecoder : Json.Decoder KeyboardMappings
+keyboardControlsDecoder =
+    Json.map3
+        KeyboardMappings
+        (Json.field "slideshowMap"
+            (Json.map4 SlideshowMap
+                (Json.field "next" (Json.list Json.string))
+                (Json.field "prev" (Json.list Json.string))
+                (Json.field "exit" (Json.list Json.string))
+                (Json.field "toggle" (Json.list Json.string))
+            )
+        )
+        (Json.field "preferenceMap"
+            (Json.map
+                PreferencesMap
+                (Json.field "exit" (Json.list Json.string))
+            )
+        )
+        (Json.field "previewMap"
+            (Json.map3 PreviewMap
+                (Json.field "openCurrent" (Json.list Json.string))
+                (Json.field "closeCurrent" (Json.list Json.string))
+                (Json.field "startSlideshow" (Json.list Json.string))
+            )
+        )
 
 
 hexColorDecoder : Json.Decoder Color
@@ -559,11 +586,6 @@ catalogDecoder : Json.Decoder Data
 catalogDecoder =
     Json.keyValuePairs Json.string
         |> Json.andThen (Json.succeed << Dict.fromList)
-
-
-keyboardMappingDecoder : Json.Decoder KeyboardMappings
-keyboardMappingDecoder =
-    Json.succeed defaultKeyboardMappings
 
 
 
