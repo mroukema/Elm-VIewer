@@ -29,6 +29,17 @@ Runs in browser tab so it can be casted in background. Displays images from loca
   - [ ] Grey-out / hide start slideshow button when no images
 
 ## Keyboard Controls
+- Arrows
+  - Forward Right
+  - Backward Left
+  - Start Slideshow Up|Space
+  - Pause/Play slideshow Space
+  - Exit slideshow Escape|Down
+  - Exit settings Escape
+- Space
+- Escape
+
+
 
 ### Slideshow View
 - Left/Right Arrow : Cycle images forwards/backwards
@@ -42,7 +53,7 @@ Runs in browser tab so it can be casted in background. Displays images from loca
 - Space : Start slideshow
 
 #### Focused Image
-- ArrowUp : Open slideshow (paused) at focused image
+- Arrow Up : Open slideshow (paused) at focused image
 - Arrow Down : Return to catalog view
 - Escape : Return to catalog view
 

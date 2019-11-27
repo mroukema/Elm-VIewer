@@ -27,11 +27,13 @@ import Element.Font as Font
 import Element.Input as Input
 import ElmViewer.Utils
     exposing
-        ( flip
+        ( Direction(..)
+        , flip
         , getFromDict
         , msgWhenKeyOf
         , rgbPaletteColor
         , seconds
+        , stepTupleList
         )
 import FeatherIcons as Icon
 import File exposing (File)
@@ -94,7 +96,7 @@ colorPalette =
 
 previewCatalogState : ViewState
 previewCatalogState =
-    Preview Catalog
+    Preview (Catalog Nothing)
 
 
 defaultSlideshowMap =
@@ -167,6 +169,7 @@ type ViewModel
         (Maybe ( ImageKey, ImageUrl ))
         { imagesPerRow : Int
         , backgroundColor : Element.Color
+        , imageSelection : Maybe (List ImageKey)
         }
     | SlideshowView ImageUrl { backgroundColor : Element.Color }
     | SettingsView Preferences
@@ -192,9 +195,11 @@ type alias SlideshowState =
     { running : Bool, slidelist : List ImageKey }
 
 
+{-| PreviewState
+-}
 type PreviewState
-    = Catalog
-    | Focused FocusedImage
+    = Catalog (Maybe (List ImageKey))
+    | Focused ( FocusedImage, List ImageKey )
 
 
 type alias FocusedImage =
@@ -246,11 +251,6 @@ type alias PreviewMap =
     , closeCurrent : List String
     , startSlideshow : List String
     }
-
-
-type Direction
-    = Forward
-    | Backward
 
 
 
@@ -459,7 +459,7 @@ subscriptions model =
                             , Browser.onKeyUp <|
                                 msgWhenKeyOf controls.prev (always <| stepSlideshow currentState Backward)
                             , Browser.onKeyUp <|
-                                msgWhenKeyOf controls.exit (always <| UpdateView (Preview Catalog))
+                                msgWhenKeyOf controls.exit (always <| UpdateView (Preview (Catalog Nothing)))
                             ]
                     in
                     case currentState.running of
@@ -472,7 +472,7 @@ subscriptions model =
                             navigationListeners
                                 |> Sub.batch
 
-                Preview (Focused imageKey) ->
+                Preview (Focused (( imageKey, imageList ) as tupleList)) ->
                     let
                         controlKeys =
                             keyboardControls.previewMap
@@ -483,13 +483,19 @@ subscriptions model =
                                 (always <| UpdateView <| openSlideshowWith imageKey <| List.sort <| Dict.keys data)
                         , Browser.onKeyUp <|
                             msgWhenKeyOf controlKeys.closeCurrent
-                                (always <| UpdateView <| Preview Catalog)
+                                (always <| UpdateView <| Preview (Catalog Nothing))
                         , Browser.onKeyUp <|
                             msgWhenKeyOf controlKeys.openCurrent
                                 (always <| UpdateView <| openSlideshowWith imageKey <| List.sort <| Dict.keys data)
+                        , Browser.onKeyUp <|
+                            msgWhenKeyOf [ "ArrowRight" ]
+                                (always <| UpdateView <| Preview (Focused (tupleList |> stepTupleList Forward)))
+                        , Browser.onKeyUp <|
+                            msgWhenKeyOf [ "ArrowLeft" ]
+                                (always <| UpdateView <| Preview (Focused (tupleList |> stepTupleList Backward)))
                         ]
 
-                Preview Catalog ->
+                Preview (Catalog imageList) ->
                     let
                         controls =
                             keyboardControls.previewMap
@@ -619,7 +625,7 @@ viewSelector model =
     case model of
         Model data preferences viewState ->
             let
-                imageList =
+                fullImageList =
                     Dict.toList data
 
                 backgroundColor =
@@ -629,14 +635,15 @@ viewSelector model =
                 Settings ->
                     SettingsView preferences
 
-                Preview Catalog ->
-                    PreviewView imageList
+                Preview (Catalog imageList) ->
+                    PreviewView fullImageList
                         Nothing
                         { imagesPerRow = preferences.previewItemsPerRow
                         , backgroundColor = backgroundColor
+                        , imageSelection = Just <| Dict.keys data
                         }
 
-                Preview (Focused imageKey) ->
+                Preview (Focused ( imageKey, imageList )) ->
                     let
                         focusedImage =
                             data
@@ -644,19 +651,21 @@ viewSelector model =
                                 |> Maybe.andThen (Just << Tuple.pair imageKey)
                     in
                     PreviewView
-                        imageList
+                        fullImageList
                         focusedImage
                         { imagesPerRow = preferences.previewItemsPerRow
                         , backgroundColor = backgroundColor
+                        , imageSelection = Just imageList
                         }
 
                 Slideshow { running, slidelist } ->
                     case List.filterMap (getFromDict data) slidelist of
                         [] ->
-                            PreviewView imageList
+                            PreviewView fullImageList
                                 Nothing
                                 { imagesPerRow = preferences.previewItemsPerRow
                                 , backgroundColor = backgroundColor
+                                , imageSelection = Nothing
                                 }
 
                         firstImage :: images ->
@@ -677,7 +686,8 @@ renderView model =
         content =
             case model of
                 PreviewView images _ preferences ->
-                    Element.column [ width fill, height fill, Background.color preferences.backgroundColor ]
+                    Element.column
+                        [ width fill, height fill, Background.color preferences.backgroundColor ]
                         [ imageHeader model
                         , filePreviewView images preferences
                         ]
@@ -688,7 +698,8 @@ renderView model =
                         (slideshowView currentImage)
 
                 SettingsView ({ backgroundColor } as preferences) ->
-                    Element.column [ width fill, height fill, Background.color (backgroundColor |> rgbPaletteColor) ]
+                    Element.column
+                        [ width fill, height fill, Background.color (backgroundColor |> rgbPaletteColor) ]
                         [ imageHeader model
                         , editPreferencesView preferences
                         ]
@@ -881,7 +892,7 @@ mappingEditor ( key, values ) =
     Element.row [ width fill, Element.padding 5 ]
         [ Element.el [ width <| fillPortion 1, Font.color <| rgb 1 1 1, Element.paddingXY 26 0 ] <| Element.text capitalizedKey
         , Input.text [ width <| fillPortion 6, height (30 |> px), Font.size 16 ]
-            { onChange = always <| UpdateView <| Preview Catalog
+            { onChange = always <| UpdateView <| Preview (Catalog Nothing)
             , text = List.foldl ((++) " " >> (++)) "" values
             , placeholder = Nothing
             , label = Input.labelHidden key
@@ -924,10 +935,15 @@ keyboardMappingPreferences { slideshowMap, preferencesMap, previewMap } =
 
 filePreviewView :
     List ( ImageKey, ImageUrl )
-    -> { r | imagesPerRow : Int, backgroundColor : Element.Color }
+    ->
+        { r
+            | imagesPerRow : Int
+            , backgroundColor : Element.Color
+            , imageSelection : Maybe (List ImageKey)
+        }
     -> Element Msg
-filePreviewView images { imagesPerRow, backgroundColor } =
-    List.greedyGroupsOf imagesPerRow images
+filePreviewView images { imagesPerRow, backgroundColor, imageSelection } =
+    List.greedyGroupsOf imagesPerRow (List.sort images)
         |> List.map
             (\group ->
                 let
@@ -935,7 +951,7 @@ filePreviewView images { imagesPerRow, backgroundColor } =
                         imagesPerRow - List.length group
                 in
                 group
-                    |> List.map previewImage
+                    |> List.map (previewImage (imageSelection |> Maybe.withDefault []))
                     |> flip List.append
                         (List.repeat
                             elementDeficit
@@ -993,7 +1009,7 @@ expandIconControl msg =
             ]
 
 
-previewImageControls imageKey =
+previewImageControls otherSelected imageKey =
     Element.column
         [ width fill
         , height fill
@@ -1003,13 +1019,13 @@ previewImageControls imageKey =
         , Element.mouseOver [ Element.transparent <| False ]
         ]
         [ squareXIconControl <| RemoveImage imageKey
-        , expandIconControl <| UpdateView <| Preview <| Focused imageKey
+        , expandIconControl <| UpdateView <| Preview <| Focused ( imageKey, otherSelected )
         ]
         |> Element.el [ width fill, height fill ]
 
 
-previewImage : ( ImageKey, ImageUrl ) -> Element Msg
-previewImage ( imageKey, imageSrc ) =
+previewImage : List ImageKey -> ( ImageKey, ImageUrl ) -> Element Msg
+previewImage otherSelected ( imageKey, imageSrc ) =
     { src = imageSrc
     , description = ""
     }
@@ -1018,7 +1034,7 @@ previewImage ( imageKey, imageSrc ) =
             , height fill
             , Element.centerX
             , Element.centerY
-            , inFront <| previewImageControls imageKey
+            , inFront <| previewImageControls otherSelected imageKey
             ]
         |> Element.el
             [ width fill
@@ -1039,7 +1055,7 @@ expandedImage imageUrl =
         Element.el
             [ width fill
             , height fill
-            , inFront <| squareXIconControl <| UpdateView <| Preview Catalog
+            , inFront <| squareXIconControl <| UpdateView <| Preview (Catalog Nothing)
             ]
             (Element.html
                 (Html.img

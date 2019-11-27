@@ -1,19 +1,27 @@
 module ElmViewer.Utils exposing
-    ( flip
+    ( Direction(..)
+    , flip
     , getFromDict
     , msgWhenKeyOf
     , rgbPaletteColor
     , seconds
+    , stepTupleList
     )
 
 import Color as PaletteColor exposing (toRGB)
 import Dict exposing (Dict)
 import Element
 import Json.Decode as Json
+import List.Extra as List
 
 
 
 -- Utility
+
+
+type Direction
+    = Forward
+    | Backward
 
 
 flip : (arg2 -> arg1 -> o) -> arg1 -> arg2 -> o
@@ -28,6 +36,28 @@ getFromDict dict key =
 
 seconds =
     (*) 1000
+
+
+stepTupleList : Direction -> ( a, List a ) -> ( a, List a )
+stepTupleList direction ( head, tail ) =
+    case ( tail, direction ) of
+        ( tailHead :: rest, Forward ) ->
+            ( tailHead
+            , List.append rest [ head ]
+            )
+
+        ( tailHead :: tailTail, Backward ) ->
+            case List.unconsLast tailTail of
+                Just ( last, middle ) ->
+                    ( last
+                    , head :: tailHead :: middle
+                    )
+
+                Nothing ->
+                    ( head, tail )
+
+        ( [], _ ) ->
+            ( head, tail )
 
 
 
