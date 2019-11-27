@@ -1026,6 +1026,17 @@ previewImageControls otherSelected imageKey =
 
 previewImage : List ImageKey -> ( ImageKey, ImageUrl ) -> Element Msg
 previewImage otherSelected ( imageKey, imageSrc ) =
+    let
+        orderedSelected =
+            otherSelected
+                |> List.splitWhen ((==) imageKey)
+                |> Maybe.andThen
+                    (\( head, tail ) ->
+                        Just
+                            (List.append (tail |> List.remove imageKey) head)
+                    )
+                |> Maybe.withDefault otherSelected
+    in
     { src = imageSrc
     , description = ""
     }
@@ -1034,7 +1045,7 @@ previewImage otherSelected ( imageKey, imageSrc ) =
             , height fill
             , Element.centerX
             , Element.centerY
-            , inFront <| previewImageControls otherSelected imageKey
+            , inFront <| previewImageControls orderedSelected imageKey
             ]
         |> Element.el
             [ width fill
