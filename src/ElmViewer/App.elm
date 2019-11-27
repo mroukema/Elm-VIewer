@@ -12,6 +12,7 @@ import Element
         , alignRight
         , alignTop
         , fill
+        , fillPortion
         , height
         , inFront
         , px
@@ -28,7 +29,7 @@ import ElmViewer.Utils
     exposing
         ( flip
         , getFromDict
-        , msgWhen
+        , msgWhenKeyOf
         , rgbPaletteColor
         , seconds
         )
@@ -451,16 +452,20 @@ subscriptions model =
                             keyboardControls.slideshowMap
 
                         navigationListeners =
-                            [ Browser.onKeyPress <| msgWhen controls.toggle <| \_ -> togglePauseSlideshow currentState
-                            , Browser.onKeyUp <| msgWhen controls.next <| \_ -> stepSlideshow currentState Forward
-                            , Browser.onKeyUp <| msgWhen controls.prev <| \_ -> stepSlideshow currentState Backward
-                            , Browser.onKeyUp <| msgWhen controls.exit <| \_ -> UpdateView (Preview Catalog)
+                            [ Browser.onKeyPress <|
+                                msgWhenKeyOf controls.toggle (always <| togglePauseSlideshow currentState)
+                            , Browser.onKeyUp <|
+                                msgWhenKeyOf controls.next (always <| stepSlideshow currentState Forward)
+                            , Browser.onKeyUp <|
+                                msgWhenKeyOf controls.prev (always <| stepSlideshow currentState Backward)
+                            , Browser.onKeyUp <|
+                                msgWhenKeyOf controls.exit (always <| UpdateView (Preview Catalog))
                             ]
                     in
                     case currentState.running of
                         True ->
                             navigationListeners
-                                |> (::) (Time.every slideshowSpeed <| \_ -> stepSlideshow currentState Forward)
+                                |> (::) (Time.every slideshowSpeed <| always <| stepSlideshow currentState Forward)
                                 |> Sub.batch
 
                         False ->
@@ -469,17 +474,19 @@ subscriptions model =
 
                 Preview (Focused imageKey) ->
                     let
-                        controls =
+                        controlKeys =
                             keyboardControls.previewMap
                     in
                     Sub.batch
                         [ Browser.onKeyPress <|
-                            msgWhen controls.startSlideshow
-                                (\_ -> UpdateView <| openSlideshowWith imageKey <| List.sort <| Dict.keys data)
-                        , Browser.onKeyUp <| msgWhen controls.closeCurrent <| \_ -> UpdateView <| Preview Catalog
+                            msgWhenKeyOf controlKeys.startSlideshow
+                                (always <| UpdateView <| openSlideshowWith imageKey <| List.sort <| Dict.keys data)
                         , Browser.onKeyUp <|
-                            msgWhen controls.openCurrent
-                                (\_ -> UpdateView <| openSlideshowWith imageKey <| List.sort <| Dict.keys data)
+                            msgWhenKeyOf controlKeys.closeCurrent
+                                (always <| UpdateView <| Preview Catalog)
+                        , Browser.onKeyUp <|
+                            msgWhenKeyOf controlKeys.openCurrent
+                                (always <| UpdateView <| openSlideshowWith imageKey <| List.sort <| Dict.keys data)
                         ]
 
                 Preview Catalog ->
@@ -488,15 +495,17 @@ subscriptions model =
                             keyboardControls.previewMap
                     in
                     Browser.onKeyPress <|
-                        msgWhen controls.startSlideshow <|
-                            \_ -> Dict.keys data |> List.sort |> startSlideshow
+                        msgWhenKeyOf controls.startSlideshow
+                            (always <| startSlideshow <| List.sort <| Dict.keys data)
 
                 Settings ->
                     let
                         controls =
                             keyboardControls.preferencesMap
                     in
-                    Browser.onKeyUp <| msgWhen controls.exit (always <| UpdateView previewCatalogState)
+                    Browser.onKeyUp <|
+                        msgWhenKeyOf controls.exit
+                            (always <| UpdateView previewCatalogState)
 
 
 
@@ -774,11 +783,11 @@ colorPickerBox colorChangeMsg color =
 editPreferencesView : Preferences -> Element Msg
 editPreferencesView preferences =
     let
-        { slideshowSpeed, backgroundColor, previewItemsPerRow } =
+        { slideshowSpeed, backgroundColor, previewItemsPerRow, keyboardControls } =
             preferences
     in
     Element.el [ width fill, height fill, Background.color (backgroundColor |> rgbPaletteColor), Element.spacing 50, Element.padding 20 ] <|
-        Element.column [ width Element.fill, Element.padding 35, Background.color <| rgba255 0 0 0 0.5, Element.spacing 10 ]
+        Element.column [ width Element.fill, Element.padding 35, Background.color <| rgba255 0 0 0 0.5, Element.spacing 20 ]
             [ Input.slider
                 [ width <| Element.fillPortion 4
                 , Element.behindContent <|
@@ -837,7 +846,79 @@ editPreferencesView preferences =
                     [ width <| Element.fillPortion 4, height (20 |> px) ]
                     (colorPicker (\newColor -> UpdatePreferences { preferences | backgroundColor = newColor }))
                 ]
+            , Element.row [ width fill, height Element.fill ]
+                [ Element.el [ width <| Element.fillPortion 1, Font.color <| rgb 1 1 1 ] <|
+                    Element.text "Keyboard Controls"
+                , Element.el
+                    [ width <| Element.fillPortion 4 ]
+                    (keyboardMappingPreferences keyboardControls)
+                ]
             ]
+
+
+keyboardMappingsView : String -> List ( String, List String ) -> Element Msg
+keyboardMappingsView headingText mappings =
+    Element.column [ width fill ]
+        [ Element.el
+            [ width fill, Font.color <| rgb 1 1 1 ]
+            (headingText |> text)
+        , mappings |> mappingsEditor
+        ]
+
+
+mappingEditor : ( String, List String ) -> Element Msg
+mappingEditor ( key, values ) =
+    let
+        capitalizedKey =
+            case String.uncons key of
+                Nothing ->
+                    ""
+
+                Just ( head, tail ) ->
+                    (Char.toUpper >> String.fromChar) head ++ tail
+    in
+    Element.row [ width fill, Element.padding 5 ]
+        [ Element.el [ width <| fillPortion 1, Font.color <| rgb 1 1 1, Element.paddingXY 26 0 ] <| Element.text capitalizedKey
+        , Input.text [ width <| fillPortion 6, height (30 |> px), Font.size 16 ]
+            { onChange = always <| UpdateView <| Preview Catalog
+            , text = List.foldl ((++) " " >> (++)) "" values
+            , placeholder = Nothing
+            , label = Input.labelHidden key
+            }
+        ]
+
+
+mappingsEditor : List ( String, List String ) -> Element Msg
+mappingsEditor mappings =
+    Element.column
+        [ width fill, height fill ]
+        [ Element.column [ width fill ]
+            (List.map
+                mappingEditor
+                mappings
+            )
+        ]
+
+
+keyboardMappingPreferences : KeyboardMappings -> Element Msg
+keyboardMappingPreferences { slideshowMap, preferencesMap, previewMap } =
+    Element.column
+        [ width fill, height fill ]
+        [ keyboardMappingsView "Slideshow View"
+            [ ( "next", slideshowMap.next )
+            , ( "prev", slideshowMap.prev )
+            , ( "exit", slideshowMap.exit )
+            , ( "toggle", slideshowMap.toggle )
+            ]
+        , keyboardMappingsView "Preferences View"
+            [ ( "exit", preferencesMap.exit )
+            ]
+        , keyboardMappingsView "Preview View"
+            [ ( "openCurrent", previewMap.openCurrent )
+            , ( "closeCurrent", previewMap.closeCurrent )
+            , ( "startSlideshow", previewMap.startSlideshow )
+            ]
+        ]
 
 
 filePreviewView :

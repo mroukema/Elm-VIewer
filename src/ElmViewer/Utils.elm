@@ -1,7 +1,7 @@
 module ElmViewer.Utils exposing
     ( flip
     , getFromDict
-    , msgWhen
+    , msgWhenKeyOf
     , rgbPaletteColor
     , seconds
     )
@@ -47,8 +47,8 @@ rgbPaletteColor =
 -- Decoders
 
 
-msgWhen : List String -> (String -> msg) -> Json.Decoder msg
-msgWhen keys msg =
+msgWhenKeyOf : List String -> (String -> msg) -> Json.Decoder msg
+msgWhenKeyOf keys msg =
     Json.map msg (Json.field "key" Json.string |> Json.andThen (keyMatchDecoder keys))
 
 
