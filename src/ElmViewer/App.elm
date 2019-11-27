@@ -846,13 +846,14 @@ editPreferencesView preferences =
                     [ width <| Element.fillPortion 4, height (20 |> px) ]
                     (colorPicker (\newColor -> UpdatePreferences { preferences | backgroundColor = newColor }))
                 ]
-            , Element.row [ width fill, height Element.fill ]
-                [ Element.el [ width <| Element.fillPortion 1, Font.color <| rgb 1 1 1 ] <|
-                    Element.text "Keyboard Controls"
-                , Element.el
-                    [ width <| Element.fillPortion 4 ]
-                    (keyboardMappingPreferences keyboardControls)
-                ]
+
+            -- , Element.row [ width fill, height Element.fill ]
+            --     [ Element.el [ width <| Element.fillPortion 1, Font.color <| rgb 1 1 1 ] <|
+            --         Element.text "Keyboard Controls"
+            --     , Element.el
+            --         [ width <| Element.fillPortion 4 ]
+            --         (keyboardMappingPreferences keyboardControls)
+            --     ]
             ]
 
 
