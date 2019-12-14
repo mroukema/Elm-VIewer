@@ -11,6 +11,7 @@ import Element
         , alignBottom
         , alignRight
         , alignTop
+        , centerX
         , fill
         , fillPortion
         , height
@@ -100,8 +101,8 @@ previewCatalogState =
 
 
 defaultSlideshowMap =
-    { next = [ "ArrowLeft" ]
-    , prev = [ "ArrowRight" ]
+    { next = [ "ArrowRight" ]
+    , prev = [ "ArrowLeft" ]
     , exit = [ "Escape", "ArrowDown" ]
     , toggle = [ " " ]
     }
@@ -727,50 +728,103 @@ imageHeader model =
     in
     case model of
         SettingsView _ ->
-            Element.row [ width fill, Background.color <| headerBackground, Element.spaceEvenly, Element.padding 5 ]
-                [ Element.text ""
+            Element.row
+                [ Background.color <| headerBackground
+                , Element.spaceEvenly
+                , Element.padding 5
+                , centerX
+                , width fill
+                , height (50 |> px)
+                , Element.padding 20
+                ]
+                [ Element.el [ centerX, width fill ] Element.none
+                , Element.text ""
                 , "Preview View"
                     |> Element.text
-                    |> Element.el [ onClick <| UpdateView previewCatalogState, Font.color fontColor ]
+                    |> Element.el
+                        [ centerX
+                        , onClick <| UpdateView previewCatalogState
+                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                        ]
+                    |> Element.el [ Font.color fontColor, centerX, width fill ]
                 , "Select Images"
                     |> Element.text
-                    |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
+                    |> Element.el
+                        [ centerX
+                        , onClick OpenImagePicker
+                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                        ]
+                    |> Element.el [ Font.color fontColor, centerX, width fill ]
                 , "Save"
                     |> Element.text
-                    |> Element.el [ onClick SaveCatalog, Font.color fontColor ]
+                    |> Element.el
+                        [ centerX
+                        , onClick SaveCatalog
+                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                        ]
+                    |> Element.el [ Font.color fontColor, centerX, width fill ]
                 , "Load"
                     |> Element.text
-                    |> Element.el [ onClick LoadCatalog, Font.color fontColor ]
+                    |> Element.el
+                        [ centerX
+                        , onClick LoadCatalog
+                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                        ]
+                    |> Element.el [ Font.color fontColor, centerX, width fill ]
                 ]
 
         PreviewView imageUrls _ _ ->
-            Element.row [ width fill, Background.color <| headerBackground, Element.spaceEvenly, Element.padding 5 ]
+            Element.row
+                [ width fill
+                , height (50 |> px)
+                , Background.color <| headerBackground
+                , Element.spaceEvenly
+                , Element.padding 20
+                ]
                 [ "Start Slideshow"
                     |> Element.text
                     |> Element.el
-                        [ onClick <| startSlideshow <| List.sort <| List.map Tuple.first imageUrls
-                        , Font.color fontColor
+                        [ centerX
+                        , onClick <| startSlideshow <| List.sort <| List.map Tuple.first imageUrls
+                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
                         ]
+                    |> Element.el [ Font.color fontColor, width fill, centerX ]
                 , "Preferences"
                     |> Element.text
-                    |> Element.el [ onClick <| UpdateView Settings, Font.color fontColor ]
+                    |> Element.el
+                        [ centerX
+                        , onClick <| UpdateView Settings
+                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                        ]
+                    |> Element.el [ Font.color fontColor, width fill, centerX ]
                 , "Select Images"
                     |> Element.text
-                    |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
+                    |> Element.el
+                        [ onClick OpenImagePicker
+                        , centerX
+                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                        ]
+                    |> Element.el [ Font.color fontColor, width fill, centerX ]
                 , "Save"
                     |> Element.text
-                    |> Element.el [ onClick SaveCatalog, Font.color fontColor ]
+                    |> Element.el
+                        [ onClick SaveCatalog
+                        , centerX
+                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                        ]
+                    |> Element.el [ Font.color fontColor, width fill, centerX ]
                 , "Load"
                     |> Element.text
-                    |> Element.el [ onClick LoadCatalog, Font.color fontColor ]
+                    |> Element.el
+                        [ onClick LoadCatalog
+                        , centerX
+                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                        ]
+                    |> Element.el [ Font.color fontColor, width fill, centerX ]
                 ]
 
         _ ->
-            Element.row [ width fill, Background.color <| rgba255 220 220 220 0.5, Element.spaceEvenly, Element.padding 5 ]
-                [ "" |> Element.text
-                , "Preferences" |> Element.text |> Element.el [ onClick <| UpdateView Settings, Font.color fontColor ]
-                , "Select Images" |> Element.text |> Element.el [ onClick OpenImagePicker, Font.color fontColor ]
-                ]
+            Element.none
 
 
 colorPicker updateMsg =

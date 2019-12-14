@@ -41,6 +41,9 @@ seconds =
 stepTupleList : Direction -> ( a, List a ) -> ( a, List a )
 stepTupleList direction ( head, tail ) =
     case ( tail, direction ) of
+        ( [], _ ) ->
+            ( head, tail )
+
         ( tailHead :: rest, Forward ) ->
             ( tailHead
             , List.append rest [ head ]
@@ -55,9 +58,6 @@ stepTupleList direction ( head, tail ) =
 
                 Nothing ->
                     ( head, tail )
-
-        ( [], _ ) ->
-            ( head, tail )
 
 
 
