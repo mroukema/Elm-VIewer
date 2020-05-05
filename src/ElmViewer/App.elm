@@ -12,13 +12,16 @@ import Element
         , alignRight
         , alignTop
         , centerX
+        , centerY
         , fill
         , fillPortion
         , height
         , inFront
+        , mouseOver
         , px
         , rgb
         , rgba255
+        , scale
         , text
         , width
         )
@@ -105,6 +108,7 @@ defaultSlideshowMap =
     , prev = [ "ArrowLeft" ]
     , exit = [ "Escape", "ArrowDown" ]
     , toggle = [ " " ]
+    , rotate = [ "\\" ]
     }
 
 
@@ -172,7 +176,7 @@ type ViewModel
         , backgroundColor : Element.Color
         , imageSelection : Maybe (List ImageKey)
         }
-    | SlideshowView ImageUrl { backgroundColor : Element.Color }
+    | SlideshowView ImageUrl { backgroundColor : Element.Color, rotation : Float }
     | SettingsView Preferences
 
 
@@ -193,7 +197,7 @@ Note: persisted data for scene not data required to render the scene
 
 -}
 type alias SlideshowState =
-    { running : Bool, slidelist : List ImageKey }
+    { running : Bool, rotation : Float, slidelist : List ImageKey }
 
 
 {-| PreviewState
@@ -239,6 +243,7 @@ type alias SlideshowMap =
     , prev : List String
     , exit : List String
     , toggle : List String
+    , rotate : List String
     }
 
 
@@ -278,7 +283,7 @@ updateSlideshow state =
 
 startSlideshow : List ImageKey -> Msg
 startSlideshow slides =
-    updateSlideshow { running = True, slidelist = slides }
+    updateSlideshow { running = True, rotation = 0.0, slidelist = slides }
 
 
 togglePauseSlideshow : SlideshowState -> Msg
@@ -435,7 +440,7 @@ setStartingSlide imageKey slides =
 
 openSlideshowWith : ImageKey -> (List ImageKey -> ViewState)
 openSlideshowWith startingImage =
-    setStartingSlide startingImage >> SlideshowState False >> Slideshow
+    setStartingSlide startingImage >> SlideshowState False 0.0 >> Slideshow
 
 
 
@@ -459,14 +464,24 @@ subscriptions model =
                                 msgWhenKeyOf controls.next (always <| stepSlideshow currentState Forward)
                             , Browser.onKeyUp <|
                                 msgWhenKeyOf controls.prev (always <| stepSlideshow currentState Backward)
+                            , Browser.onKeyUp <| msgWhenKeyOf controls.exit (always <| UpdateView (Preview (Catalog Nothing)))
                             , Browser.onKeyUp <|
-                                msgWhenKeyOf controls.exit (always <| UpdateView (Preview (Catalog Nothing)))
+                                msgWhenKeyOf controls.rotate
+                                    (always <|
+                                        updateSlideshow
+                                            { currentState
+                                                | rotation = currentState.rotation + (pi / 2)
+                                            }
+                                    )
                             ]
                     in
                     case currentState.running of
                         True ->
                             navigationListeners
-                                |> (::) (Time.every slideshowSpeed <| always <| stepSlideshow currentState Forward)
+                                |> (::)
+                                    (Time.every slideshowSpeed
+                                        (always <| stepSlideshow currentState Forward)
+                                    )
                                 |> Sub.batch
 
                         False ->
@@ -570,11 +585,18 @@ keyboardControlsDecoder =
     Json.map3
         KeyboardMappings
         (Json.field "slideshowMap"
-            (Json.map4 SlideshowMap
+            (Json.map5 SlideshowMap
                 (Json.field "next" (Json.list Json.string))
                 (Json.field "prev" (Json.list Json.string))
                 (Json.field "exit" (Json.list Json.string))
                 (Json.field "toggle" (Json.list Json.string))
+                (Json.field "rotate"
+                    (Json.oneOf
+                        [ Json.list Json.string
+                        , Json.succeed [ "\\" ] -- default
+                        ]
+                    )
+                )
             )
         )
         (Json.field "preferenceMap"
@@ -659,7 +681,7 @@ viewSelector model =
                         , imageSelection = Just imageList
                         }
 
-                Slideshow { running, slidelist } ->
+                Slideshow { running, rotation, slidelist } ->
                     case List.filterMap (getFromDict data) slidelist of
                         [] ->
                             PreviewView fullImageList
@@ -670,7 +692,10 @@ viewSelector model =
                                 }
 
                         firstImage :: images ->
-                            SlideshowView firstImage { backgroundColor = backgroundColor }
+                            SlideshowView firstImage
+                                { backgroundColor = backgroundColor
+                                , rotation = rotation
+                                }
 
 
 renderView : ViewModel -> Html Msg
@@ -693,10 +718,10 @@ renderView model =
                         , filePreviewView images preferences
                         ]
 
-                SlideshowView currentImage { backgroundColor } ->
+                SlideshowView currentImage { backgroundColor, rotation } ->
                     Element.el
                         [ width fill, height fill, Background.color backgroundColor ]
-                        (slideshowView currentImage)
+                        (slideshowView currentImage rotation)
 
                 SettingsView ({ backgroundColor } as preferences) ->
                     Element.column
@@ -851,8 +876,20 @@ editPreferencesView preferences =
         { slideshowSpeed, backgroundColor, previewItemsPerRow, keyboardControls } =
             preferences
     in
-    Element.el [ width fill, height fill, Background.color (backgroundColor |> rgbPaletteColor), Element.spacing 50, Element.padding 20 ] <|
-        Element.column [ width Element.fill, Element.padding 35, Background.color <| rgba255 0 0 0 0.5, Element.spacing 20 ]
+    Element.el
+        [ width fill
+        , height fill
+        , Background.color (backgroundColor |> rgbPaletteColor)
+        , Element.spacing 50
+        , Element.padding 20
+        ]
+    <|
+        Element.column
+            [ width Element.fill
+            , Element.padding 35
+            , Background.color <| rgba255 0 0 0 0.5
+            , Element.spacing 20
+            ]
             [ Input.slider
                 [ width <| Element.fillPortion 4
                 , Element.behindContent <|
@@ -892,7 +929,12 @@ editPreferencesView preferences =
                         ]
                         Element.none
                 ]
-                { onChange = round >> (\newCount -> UpdatePreferences { preferences | previewItemsPerRow = newCount })
+                { onChange =
+                    round
+                        >> (\newCount ->
+                                UpdatePreferences
+                                    { preferences | previewItemsPerRow = newCount }
+                           )
                 , label =
                     Input.labelLeft
                         [ Font.color <| rgba255 250 250 250 1.0, width <| Element.fillPortion 1 ]
@@ -944,7 +986,13 @@ mappingEditor ( key, values ) =
                     (Char.toUpper >> String.fromChar) head ++ tail
     in
     Element.row [ width fill, Element.padding 5 ]
-        [ Element.el [ width <| fillPortion 1, Font.color <| rgb 1 1 1, Element.paddingXY 26 0 ] <| Element.text capitalizedKey
+        [ Element.el
+            [ width <| fillPortion 1
+            , Font.color <| rgb 1 1 1
+            , Element.paddingXY 26 0
+            ]
+          <|
+            Element.text capitalizedKey
         , Input.text [ width <| fillPortion 6, height (30 |> px), Font.size 16 ]
             { onChange = always <| UpdateView <| Preview (Catalog Nothing)
             , text = List.foldl ((++) " " >> (++)) "" values
@@ -997,33 +1045,35 @@ filePreviewView :
         }
     -> Element Msg
 filePreviewView images { imagesPerRow, backgroundColor, imageSelection } =
-    List.greedyGroupsOf imagesPerRow (List.sort images)
-        |> List.map
-            (\group ->
-                let
-                    elementDeficit =
-                        imagesPerRow - List.length group
-                in
-                group
-                    |> List.map (previewImage (imageSelection |> Maybe.withDefault []))
-                    |> flip List.append
-                        (List.repeat
-                            elementDeficit
-                            (Element.el [ width fill, height fill ] Element.none)
-                        )
-                    |> Element.row
+    Element.column
+        [ width fill
+        , height fill
+        , Background.color backgroundColor
+        , Element.spacing 5
+        , Element.padding 5
+        ]
+        (images
+            |> List.sort
+            |> List.greedyGroupsOf imagesPerRow
+            |> List.map
+                (\group ->
+                    let
+                        paddingElements =
+                            List.repeat
+                                (imagesPerRow - List.length group)
+                                (Element.el [ width fill, height fill ] Element.none)
+                    in
+                    Element.row
                         [ Element.spaceEvenly
                         , Element.spacing 10
                         , width fill
                         ]
-            )
-        |> Element.column
-            [ width fill
-            , height fill
-            , Background.color backgroundColor
-            , Element.spacing 5
-            , Element.padding 5
-            ]
+                        (group
+                            |> List.map (previewImage (imageSelection |> Maybe.withDefault []))
+                            |> (\imageElements -> List.append imageElements paddingElements)
+                        )
+                )
+        )
 
 
 squareXIconControl msg =
@@ -1084,28 +1134,27 @@ previewImage otherSelected ( imageKey, imageSrc ) =
         orderedSelected =
             otherSelected
                 |> List.splitWhen ((==) imageKey)
-                |> Maybe.andThen
-                    (\( head, tail ) ->
-                        Just
-                            (List.append (tail |> List.remove imageKey) head)
-                    )
+                |> Maybe.andThen (\( head, tail ) -> Just (List.append (tail |> List.remove imageKey) head))
                 |> Maybe.withDefault otherSelected
     in
-    { src = imageSrc
-    , description = ""
-    }
-        |> Element.image
+    Element.el
+        [ width fill
+        , height fill
+        , centerX
+        , centerY
+        , mouseOver [ scale 1.035 ]
+        ]
+        (Element.image
             [ width fill
             , height fill
-            , Element.centerX
-            , Element.centerY
+            , centerX
+            , centerY
             , inFront <| previewImageControls orderedSelected imageKey
             ]
-        |> Element.el
-            [ width fill
-            , height fill
-            , Element.mouseOver [ Element.scale 1.035 ]
-            ]
+            { src = imageSrc
+            , description = ""
+            }
+        )
 
 
 expandedImage : ImageUrl -> Element Msg
@@ -1116,14 +1165,13 @@ expandedImage imageUrl =
         , Background.color (Element.rgba 0.1 0.1 0.1 0.9)
         , Element.padding 24
         ]
-    <|
-        Element.el
+        (Element.el
             [ width fill
             , height fill
-            , inFront <| squareXIconControl <| UpdateView <| Preview (Catalog Nothing)
+            , inFront <| squareXIconControl <| UpdateView <| Preview <| Catalog Nothing
             ]
-            (Element.html
-                (Html.img
+            (Element.html <|
+                Html.img
                     --  Black CSS Magic to make image fit within bounds at normal aspect ratio
                     [ src imageUrl
                     , style "position" "absolute"
@@ -1134,15 +1182,15 @@ expandedImage imageUrl =
                     , style "max-width" "100%"
                     ]
                     []
-                )
             )
+        )
 
 
 {-| slideshowView
 Use of Html.img due to Element.img not respecting parent height with base64 encoded image
 -}
-slideshowView : String -> Element Msg
-slideshowView imageUrl =
+slideshowView : String -> Float -> Element Msg
+slideshowView imageUrl rotation =
     let
         url =
             imageUrl
@@ -1151,6 +1199,7 @@ slideshowView imageUrl =
         [ Element.clip
         , width fill
         , height fill
+        , Element.rotate rotation
         ]
         (Element.html
             (Html.img
