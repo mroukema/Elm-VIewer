@@ -590,13 +590,27 @@ keyboardControlsDecoder =
                 (Json.field "prev" (Json.list Json.string))
                 (Json.field "exit" (Json.list Json.string))
                 (Json.field "toggle" (Json.list Json.string))
-                (Json.field "rotate"
-                    (Json.oneOf
-                        [ Json.list Json.string
-                        , Json.succeed [ "\\" ] -- default
-                        ]
+                (Json.andThen
+                    (\m ->
+                        case m of
+                            Just v ->
+                                Json.succeed v
+
+                            Nothing ->
+                                Json.succeed [ "\\" ]
+                    )
+                    (Json.maybe
+                        (Json.field "rotate" (Json.succeed [ "\\" ]))
                     )
                 )
+             --Json.field "rotate" [ "\\" ]
+             -- (Json.field "rotate"
+             --     (Json.oneOf
+             --         [ Json.list Json.string
+             --         , Json.succeed [ "\\" ] -- default
+             --         ]
+             --     )
+             -- )
             )
         )
         (Json.field "preferenceMap"
