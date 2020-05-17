@@ -2,6 +2,7 @@ module ElmViewer.Utils exposing
     ( Direction(..)
     , flip
     , getFromDict
+    , getRotatedDimensions
     , msgKeyWhen
     , msgWhenKeyOf
     , rgbPaletteColor
@@ -59,6 +60,26 @@ stepTupleList direction ( head, tail ) =
 
                 Nothing ->
                     ( head, tail )
+
+
+getRotatedDimensions :
+    Float
+    -> { element | width : Float, height : Float }
+    -> { width : Float, height : Float }
+getRotatedDimensions rotation ({ width, height } as dims) =
+    let
+        radians =
+            turns rotation
+
+        s =
+            abs <| sin radians
+
+        c =
+            abs <| cos radians
+    in
+    { width = c * width + s * height
+    , height = s * width + c * height
+    }
 
 
 

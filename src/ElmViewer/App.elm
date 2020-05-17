@@ -41,6 +41,7 @@ import ElmViewer.Utils
         ( Direction(..)
         , flip
         , getFromDict
+        , getRotatedDimensions
         , msgWhenKeyOf
         , rgbPaletteColor
         , seconds
@@ -1602,13 +1603,16 @@ previewImage otherSelected ( imageKey, { imageUrl } ) =
                 |> List.splitWhen ((==) imageKey)
                 |> Maybe.andThen (\( head, tail ) -> Just (List.append (tail |> List.remove imageKey) head))
                 |> Maybe.withDefault otherSelected
+
+        mouseOverScaleFactor =
+            1.035
     in
     Element.el
         [ width fill
         , height fill
         , centerX
         , centerY
-        , mouseOver [ scale 1.035 ]
+        , mouseOver [ scale mouseOverScaleFactor ]
         ]
         (Element.image
             [ width fill
@@ -1632,40 +1636,43 @@ expandedImage image viewport options =
     let
         imageUrl =
             .imageUrl image
+
+        padding =
+            24
+
+        totalPadding =
+            padding * 2
     in
     Element.el
         [ width fill
         , height fill
         , Background.color (Element.rgba 0.1 0.1 0.1 0.9)
-        , Element.padding 24
+        , Element.padding padding
         ]
         (Element.el
             [ width fill
             , height fill
             , inFront <| squareXIconControl <| UpdateView <| Preview <| Catalog Nothing
             ]
-            (slideshowViewElement image viewport options)
-         -- Element.html <|
-         --     Html.img
-         --         --  Black CSS Magic to make image fit within bounds at normal aspect ratio
-         --         [ src imageUrl
-         --         , style "position" "absolute"
-         --         , style "object-fit" "contain"
-         --         , style "height" "100%"
-         --         , style "width" "100%"
-         --         , style "max-height" "100%"
-         --         , style "max-width" "100%"
-         --         ]
-         --         []
-         -- )
+            (Element.el
+                [ width ((viewport.width - totalPadding) |> round >> px)
+                , height ((viewport.height - totalPadding) |> round >> px)
+                ]
+                (viewportBoundImage image
+                    { viewport
+                        | width = viewport.width - totalPadding
+                        , height = viewport.height - totalPadding
+                    }
+                    options
+                )
+            )
         )
 
 
 imagePxDimensions :
-    ( Element.Length, Element.Length )
-    -> { element | width : Float, height : Float }
+    { element | width : Float, height : Float }
     -> ( Element.Length, Element.Length )
-imagePxDimensions default { width, height } =
+imagePxDimensions { width, height } =
     let
         toPx =
             round >> px
@@ -1689,14 +1696,10 @@ scaleImageToViewport viewport image =
     in
     case heightLimited of
         True ->
-            { width = image.width / heightRatio
-            , height = image.height / heightRatio
-            }
+            { width = image.width / heightRatio, height = image.height / heightRatio }
 
         False ->
-            { width = image.width / widthRatio
-            , height = image.height / widthRatio
-            }
+            { width = image.width / widthRatio, height = image.height / widthRatio }
 
 
 slideshowViewElement :
@@ -1704,7 +1707,16 @@ slideshowViewElement :
     -> { viewport | width : Float, height : Float }
     -> { options | defaultRotation : Float, defaultZoom : Float }
     -> Element Msg
-slideshowViewElement image viewport { defaultRotation, defaultZoom } =
+slideshowViewElement =
+    viewportBoundImage
+
+
+viewportBoundImage :
+    ReadyImage
+    -> { viewport | width : Float, height : Float }
+    -> { options | defaultRotation : Float, defaultZoom : Float }
+    -> Element Msg
+viewportBoundImage image viewport { defaultRotation, defaultZoom } =
     let
         defaultDimensions =
             ( fill, fill )
@@ -1712,32 +1724,26 @@ slideshowViewElement image viewport { defaultRotation, defaultZoom } =
         rotation =
             image.rotation |> Maybe.withDefault defaultRotation
 
-        zoom =
-            image.zoom |> Maybe.withDefault defaultZoom
-
-        nativeScaled =
-            image.nativeDimensions
-                |> scaleImageToViewport viewport
-
-        ( imageWidth, imageHeight ) =
-            image.nativeDimensions
-                |> scaleImageToViewport viewport
-                |> imagePxDimensions defaultDimensions
-
-        imageUrl =
-            image.imageUrl
-
         radians =
             turns rotation
 
-        rotatedDimensions =
-            Debug.log "rotatedDims"
-                (Debug.log "nativeScaled" nativeScaled
-                    |> rotatedDims rotation
-                )
+        zoom =
+            image.zoom |> Maybe.withDefault defaultZoom
 
-        scaledRotated =
-            scaleImageToViewport viewport rotatedDimensions
+        scaledImageDimensions =
+            image.nativeDimensions |> scaleImageToViewport viewport
+
+        ( imageWidth, imageHeight ) =
+            scaledImageDimensions |> imagePxDimensions
+
+        scalePostRotation =
+            scaledImageDimensions
+                |> getRotatedDimensions rotation
+                |> (\rotated ->
+                        rotated
+                            |> scaleImageToViewport viewport
+                            |> (\{ width } -> width / rotated.width)
+                   )
     in
     Element.image
         [ width imageWidth
@@ -1745,27 +1751,7 @@ slideshowViewElement image viewport { defaultRotation, defaultZoom } =
         , rotate radians
         , centerX
         , centerY
-        , scale <| (*) zoom <| (scaledRotated.width / rotatedDimensions.width)
+        , scale <| (*) zoom <| scalePostRotation
         ]
-        { src = imageUrl, description = "Current Slide Image" }
+        { src = image.imageUrl, description = "Current Slide Image" }
         |> Element.el [ width fill, height fill ]
-
-
-rotatedDims :
-    Float
-    -> { element | width : Float, height : Float }
-    -> { width : Float, height : Float }
-rotatedDims rotation ({ width, height } as dims) =
-    let
-        radians =
-            turns rotation
-
-        s =
-            abs <| sin radians
-
-        c =
-            abs <| cos radians
-    in
-    { width = c * width + s * height
-    , height = s * width + c * height
-    }
