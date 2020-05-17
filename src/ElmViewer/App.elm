@@ -210,21 +210,21 @@ Note: memoization makes this process more efficient than it may appear\_
 -}
 type ViewModel
     = PreviewView
-        (List ( ImageKey, Image ))
-        (Maybe ( ImageKey, Image ))
+        (List ( ImageKey, ReadyImage ))
+        (Maybe ( ImageKey, ReadyImage ))
         { imagesPerRow : Int
         , backgroundColor : Element.Color
         , imageSelection : Maybe (List ImageKey)
-        , dimensionlessImages : List ( ImageKey, Image )
+        , dimensionlessImages : List ( ImageKey, LoadingImage )
         }
     | SlideshowView
-        Image
+        ReadyImage
         { backgroundColor : Element.Color
         , defaultRotation : Float
         , defaultZoom : Float
         , width : Float
         , height : Float
-        , dimensionlessImages : List ( ImageKey, Image )
+        , dimensionlessImages : List ( ImageKey, LoadingImage )
         }
     | SettingsView Preferences
 
@@ -260,12 +260,24 @@ type alias FocusedImage =
     ImageKey
 
 
-type alias Image =
+type alias LoadingImage =
     { imageUrl : ImageUrl
-    , nativeDimensions : Maybe { width : Float, height : Float }
     , rotation : Maybe Float
     , zoom : Maybe Float
     }
+
+
+type alias ReadyImage =
+    { imageUrl : ImageUrl
+    , nativeDimensions : { width : Float, height : Float }
+    , rotation : Maybe Float
+    , zoom : Maybe Float
+    }
+
+
+type Image
+    = Processing LoadingImage
+    | Ready ReadyImage
 
 
 type alias Data =
@@ -399,7 +411,7 @@ insertImageFromFile file =
         (File.toUrl file
             |> Task.andThen
                 (\imageUrl ->
-                    Image imageUrl Nothing Nothing Nothing |> Task.succeed
+                    LoadingImage imageUrl Nothing Nothing |> Processing |> Task.succeed
                 )
         )
 
@@ -433,7 +445,11 @@ update msg model =
         { cViewport, cImages, cPreferences, cState } =
             case model of
                 Model viewport_ images_ preferences_ state_ ->
-                    { cViewport = viewport_, cImages = images_, cPreferences = preferences_, cState = state_ }
+                    { cViewport = viewport_
+                    , cImages = images_
+                    , cPreferences = preferences_
+                    , cState = state_
+                    }
     in
     case msg of
         ViewportChange viewport ->
@@ -534,8 +550,11 @@ updateImageDimensions data filename { width, height } =
     Dict.update filename
         (\value ->
             case value of
-                Just image ->
-                    Just (Image image.imageUrl (Just { width = width, height = height }) Nothing Nothing)
+                Just (Processing image) ->
+                    Just (Ready <| ReadyImage image.imageUrl { width = width, height = height } Nothing Nothing)
+
+                Just (Ready image) ->
+                    Just (Ready <| ReadyImage image.imageUrl { width = width, height = height } Nothing Nothing)
 
                 Nothing ->
                     Nothing
@@ -558,8 +577,13 @@ decodeSaveData viewport jsonString =
 
 
 encodeImage : Image -> Encode.Value
-encodeImage =
-    .imageUrl >> Encode.string
+encodeImage image_ =
+    case image_ of
+        Processing loadingImage ->
+            loadingImage |> .imageUrl >> Encode.string
+
+        Ready readyImage ->
+            readyImage |> .imageUrl >> Encode.string
 
 
 encodeSaveData : Data -> Preferences -> String
@@ -609,8 +633,21 @@ updateImageRotation data defaultRotation imageKey delta =
     in
     activeImage
         |> Maybe.andThen
-            (\image ->
-                Just { image | rotation = image.rotation |> Maybe.withDefault defaultRotation |> boundedAdd delta |> Just }
+            (\image_ ->
+                case image_ of
+                    Processing image ->
+                        (Just << Processing)
+                            { image
+                                | rotation =
+                                    image.rotation |> Maybe.withDefault defaultRotation |> boundedAdd delta |> Just
+                            }
+
+                    Ready image ->
+                        (Just << Ready)
+                            { image
+                                | rotation =
+                                    image.rotation |> Maybe.withDefault defaultRotation |> boundedAdd delta |> Just
+                            }
             )
 
 
@@ -631,8 +668,19 @@ updateImageZoom data defaultZoom imageKey delta =
     in
     activeImage
         |> Maybe.andThen
-            (\image ->
-                Just { image | zoom = image.zoom |> Maybe.withDefault defaultZoom |> boundedAdd delta |> Just }
+            (\image_ ->
+                case image_ of
+                    Processing image ->
+                        (Just << Processing)
+                            { image
+                                | zoom = image.zoom |> Maybe.withDefault defaultZoom |> boundedAdd delta |> Just
+                            }
+
+                    Ready image ->
+                        (Just << Ready)
+                            { image
+                                | zoom = image.zoom |> Maybe.withDefault defaultZoom |> boundedAdd delta |> Just
+                            }
             )
 
 
@@ -890,7 +938,7 @@ unconsDataUriData data =
 
 decodeImage : String -> Json.Decoder Image
 decodeImage imageUrl =
-    Json.succeed { imageUrl = imageUrl, nativeDimensions = Nothing, rotation = Nothing, zoom = Nothing }
+    Json.succeed <| Processing { imageUrl = imageUrl, rotation = Nothing, zoom = Nothing }
 
 
 catalogDecoder : Json.Decoder (Dict ImageKey Image)
@@ -921,8 +969,11 @@ viewSelector model =
     case model of
         Model viewport data preferences viewState ->
             let
-                fullImageList =
-                    Dict.toList data
+                ( fullImageList, dimlessImages ) =
+                    partitionDimensionlessImages data
+
+                dimImageDict =
+                    Dict.fromList fullImageList
 
                 backgroundColor =
                     preferences.backgroundColor |> rgbPaletteColor
@@ -943,7 +994,7 @@ viewSelector model =
                 Preview (Focused ( imageKey, imageList )) ->
                     let
                         focusedImage =
-                            data
+                            dimImageDict
                                 |> Dict.get imageKey
                                 |> Maybe.andThen (Just << Tuple.pair imageKey)
                     in
@@ -957,7 +1008,7 @@ viewSelector model =
                         }
 
                 Slideshow { running, slidelist } ->
-                    case List.filterMap (getFromDict data) slidelist of
+                    case List.filterMap (getFromDict dimImageDict) slidelist of
                         [] ->
                             PreviewView fullImageList
                                 Nothing
@@ -978,10 +1029,39 @@ viewSelector model =
                                 }
 
 
-selectDimensionlessImages : Data -> List ( Filename, Image )
+selectDimensionlessImages : Data -> List ( Filename, LoadingImage )
 selectDimensionlessImages data =
-    Dict.filter (\_ value -> value.nativeDimensions == Nothing) data
-        |> Dict.toList
+    Dict.foldl
+        (\key value accum ->
+            case value of
+                Processing pImage ->
+                    ( key, pImage ) :: accum
+
+                Ready _ ->
+                    accum
+        )
+        []
+        data
+
+
+partitionDimensionlessImages : Data -> ( List ( Filename, ReadyImage ), List ( Filename, LoadingImage ) )
+partitionDimensionlessImages data =
+    Dict.foldl
+        (\key value ( dim, dimless ) ->
+            case value of
+                Processing pImage ->
+                    ( dim, ( key, pImage ) :: dimless )
+
+                Ready rImage ->
+                    ( ( key, rImage ) :: dim, dimless )
+        )
+        ( [], [] )
+        data
+
+
+
+-- |> Dict.foldl (k -> v -> b -> b) b
+-- |> Dict.toList
 
 
 renderView : ViewModel -> Html Msg
@@ -1015,10 +1095,13 @@ renderView model =
                         , filePreviewView images preferences
                         ]
 
-                SlideshowView currentImage { backgroundColor, defaultRotation, defaultZoom, width, height } ->
+                SlideshowView currentImage ({ backgroundColor, width, height } as options) ->
                     Element.el
                         [ Element.width fill, Element.height fill, Background.color backgroundColor ]
-                        (slideshowViewElement currentImage { width = width, height = height } defaultRotation defaultZoom)
+                        (slideshowViewElement currentImage
+                            { width = width, height = height }
+                            options
+                        )
 
                 --  (slideshowView currentImage rotation width height)
                 SettingsView ({ backgroundColor } as preferences) ->
@@ -1030,10 +1113,14 @@ renderView model =
     in
     content
         |> Element.layout
-            [ height fill, width fill, inFront <| overlay, Element.onRight (dimensionGetter getDimensionList) ]
+            [ height fill
+            , width fill
+            , inFront <| overlay
+            , Element.onRight (dimensionGetter getDimensionList)
+            ]
 
 
-dimensionGetter : List ( Filename, Image ) -> Element Msg
+dimensionGetter : List ( Filename, LoadingImage ) -> Element Msg
 dimensionGetter dimensionlessImages =
     Element.row []
         (List.map
@@ -1427,7 +1514,7 @@ keyboardMappingPreferences { slideshowMap, preferencesMap, previewMap } =
 
 
 filePreviewView :
-    List ( ImageKey, Image )
+    List ( ImageKey, ReadyImage )
     ->
         { r
             | imagesPerRow : Int
@@ -1551,7 +1638,7 @@ previewImage otherSelected ( imageKey, imageUrl ) =
         )
 
 
-expandedImage : Image -> Element Msg
+expandedImage : ReadyImage -> Element Msg
 expandedImage imageSrc =
     let
         imageUrl =
@@ -1584,21 +1671,16 @@ expandedImage imageSrc =
         )
 
 
-imageDimensionsWithDefaults :
+imagePxDimensions :
     ( Element.Length, Element.Length )
-    -> Maybe { element | width : Float, height : Float }
+    -> { element | width : Float, height : Float }
     -> ( Element.Length, Element.Length )
-imageDimensionsWithDefaults default mDim =
+imagePxDimensions default { width, height } =
     let
         toPx =
             round >> px
     in
-    case mDim of
-        Just { width, height } ->
-            Tuple.mapBoth toPx toPx ( width, height )
-
-        Nothing ->
-            default
+    Tuple.mapBoth toPx toPx ( width, height )
 
 
 aspectRatio : { viewport | width : Float, height : Float } -> Float
@@ -1632,8 +1714,12 @@ scaleImageToViewport viewport image =
             }
 
 
-slideshowViewElement : Image -> { viewport | width : Float, height : Float } -> Float -> Float -> Element Msg
-slideshowViewElement image viewport defaultRotation defaultZoom =
+slideshowViewElement :
+    ReadyImage
+    -> { viewport | width : Float, height : Float }
+    -> { options | defaultRotation : Float, defaultZoom : Float }
+    -> Element Msg
+slideshowViewElement image viewport { defaultRotation, defaultZoom } =
     let
         defaultDimensions =
             ( fill, fill )
@@ -1646,13 +1732,12 @@ slideshowViewElement image viewport defaultRotation defaultZoom =
 
         nativeScaled =
             image.nativeDimensions
-                |> Maybe.andThen (Just << scaleImageToViewport viewport)
-                |> Maybe.withDefault { width = viewport.width, height = viewport.height }
+                |> scaleImageToViewport viewport
 
         ( imageWidth, imageHeight ) =
             image.nativeDimensions
-                |> Maybe.andThen (Just << scaleImageToViewport viewport)
-                |> imageDimensionsWithDefaults defaultDimensions
+                |> scaleImageToViewport viewport
+                |> imagePxDimensions defaultDimensions
 
         imageUrl =
             image.imageUrl
@@ -1711,7 +1796,7 @@ hypotenuse { width, height } =
 {-| slideshowView
 Use of Html.img due to Element.img not respecting parent height with base64 encoded image
 -}
-slideshowView : Image -> Float -> { viewport | width : Float, height : Float } -> Element Msg
+slideshowView : ReadyImage -> Float -> { viewport | width : Float, height : Float } -> Element Msg
 slideshowView image rotation { width, height } =
     let
         url =
