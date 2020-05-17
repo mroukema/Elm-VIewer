@@ -1,9 +1,14 @@
-module ElmViewer.App exposing (Model, Msg, init, subscriptions, update, view)
+module ElmViewer.App exposing (Flags, Model, Msg, init, subscriptions, update, view)
 
 import Basics exposing (identity, not, pi)
 import Browser
+import Browser.Dom as Dom exposing (Viewport)
 import Browser.Events as Browser
+import Bytes exposing (Bytes)
+import Bytes.Decode as Bytes
+import Bytes.Encode as BytesEncoder
 import Color as Color exposing (Color, toRGB)
+import DataUri exposing (DataUri)
 import Dict exposing (Dict)
 import Element
     exposing
@@ -17,10 +22,12 @@ import Element
         , fillPortion
         , height
         , inFront
+        , maximum
         , mouseOver
         , px
         , rgb
         , rgba255
+        , rotate
         , scale
         , text
         , width
@@ -54,6 +61,7 @@ import Svg
 import Svg.Attributes as Svg
 import Task
 import Time
+import Tuple exposing (mapBoth)
 import Url exposing (Url)
 
 
@@ -65,9 +73,18 @@ import Url exposing (Url)
 -- Init
 
 
-init : () -> ( Model, Cmd Msg )
-init _ =
-    ( Model Dict.empty defaultPreferences previewCatalogState, Cmd.none )
+init : Flags -> ( Model, Cmd Msg )
+init flags =
+    ( Model (initialViewport flags) Dict.empty defaultPreferences previewCatalogState
+    , Task.perform ViewportChange Dom.getViewport
+    )
+
+
+initialViewport : Flags -> Viewport
+initialViewport ( width, height ) =
+    Dom.Viewport
+        { width = width, height = height }
+        { x = 0.0, y = 0.0, width = width, height = height }
 
 
 defaultPreferences : Preferences
@@ -76,6 +93,8 @@ defaultPreferences =
     , previewItemsPerRow = 4
     , backgroundColor = defaultBackground
     , keyboardControls = defaultKeyboardMappings
+    , defaultRotation = 0
+    , defaultZoom = 1
     }
 
 
@@ -98,6 +117,20 @@ colorPalette =
             ( Color.fromRGB ( 1, 1, 1 ), [] )
 
 
+{-| Hard coded constant increment size for zoom set to 0.05 (5%)
+-}
+zoomGranularity : Float
+zoomGranularity =
+    1 / 20
+
+
+{-| Hard coded costant for rotation set to 1/72 (5 degrees)
+-}
+rotationGranularity : Float
+rotationGranularity =
+    1 / 72
+
+
 previewCatalogState : ViewState
 previewCatalogState =
     Preview (Catalog Nothing)
@@ -108,7 +141,10 @@ defaultSlideshowMap =
     , prev = [ "ArrowLeft" ]
     , exit = [ "Escape", "ArrowDown" ]
     , toggle = [ " " ]
-    , rotate = [ "\\" ]
+    , rotateP = [ "|" ]
+    , rotateM = [ "\\" ]
+    , zoomP = [ "+", "=" ]
+    , zoomM = [ "-" ]
     }
 
 
@@ -148,7 +184,11 @@ and view data `ViewState`
 
 -}
 type Model
-    = Model Data Preferences ViewState
+    = Model Viewport Data Preferences ViewState
+
+
+type alias Flags =
+    ( Float, Float )
 
 
 {-| ViewModel
@@ -170,13 +210,22 @@ Note: memoization makes this process more efficient than it may appear\_
 -}
 type ViewModel
     = PreviewView
-        (List ( ImageKey, ImageUrl ))
-        (Maybe ( ImageKey, ImageUrl ))
+        (List ( ImageKey, Image ))
+        (Maybe ( ImageKey, Image ))
         { imagesPerRow : Int
         , backgroundColor : Element.Color
         , imageSelection : Maybe (List ImageKey)
+        , dimensionlessImages : List ( ImageKey, Image )
         }
-    | SlideshowView ImageUrl { backgroundColor : Element.Color, rotation : Float }
+    | SlideshowView
+        Image
+        { backgroundColor : Element.Color
+        , defaultRotation : Float
+        , defaultZoom : Float
+        , width : Float
+        , height : Float
+        , dimensionlessImages : List ( ImageKey, Image )
+        }
     | SettingsView Preferences
 
 
@@ -197,7 +246,7 @@ Note: persisted data for scene not data required to render the scene
 
 -}
 type alias SlideshowState =
-    { running : Bool, rotation : Float, slidelist : List ImageKey }
+    { running : Bool, slidelist : List ImageKey }
 
 
 {-| PreviewState
@@ -211,8 +260,16 @@ type alias FocusedImage =
     ImageKey
 
 
+type alias Image =
+    { imageUrl : ImageUrl
+    , nativeDimensions : Maybe { width : Float, height : Float }
+    , rotation : Maybe Float
+    , zoom : Maybe Float
+    }
+
+
 type alias Data =
-    Dict ImageKey ImageUrl
+    Dict ImageKey Image
 
 
 type alias Preferences =
@@ -220,6 +277,8 @@ type alias Preferences =
     , previewItemsPerRow : Int
     , backgroundColor : Color
     , keyboardControls : KeyboardMappings
+    , defaultRotation : Float
+    , defaultZoom : Float
     }
 
 
@@ -243,7 +302,10 @@ type alias SlideshowMap =
     , prev : List String
     , exit : List String
     , toggle : List String
-    , rotate : List String
+    , rotateP : List String
+    , rotateM : List String
+    , zoomP : List String
+    , zoomM : List String
     }
 
 
@@ -259,6 +321,10 @@ type alias PreviewMap =
     }
 
 
+type alias Filename =
+    String
+
+
 
 -- Msg
 
@@ -266,14 +332,18 @@ type alias PreviewMap =
 type Msg
     = OpenImagePicker
     | FilesReceived File (List File)
-    | InsertImage ImageKey (Result () ImageUrl)
+    | InsertImage ImageKey (Result () Image)
     | RemoveImage ImageKey
+    | UpdateImage ImageKey (Maybe Image)
     | UpdateView ViewState
     | UpdatePreferences Preferences
     | SaveCatalog
     | LoadCatalog
     | CatalogFileReceived File
     | CatalogDecoded (Result () ImageKey)
+    | ViewportChange Dom.Viewport
+    | GetImageDimensions Filename
+    | ImageDimensions Filename (Result Dom.Error Dom.Element)
 
 
 updateSlideshow : SlideshowState -> Msg
@@ -283,7 +353,7 @@ updateSlideshow state =
 
 startSlideshow : List ImageKey -> Msg
 startSlideshow slides =
-    updateSlideshow { running = True, rotation = 0.0, slidelist = slides }
+    updateSlideshow { running = True, slidelist = slides }
 
 
 togglePauseSlideshow : SlideshowState -> Msg
@@ -325,9 +395,13 @@ stepSlideshow state direction =
 
 insertImageFromFile : File -> Cmd Msg
 insertImageFromFile file =
-    Task.attempt
-        (InsertImage (File.name file))
-        (File.toUrl file)
+    Task.attempt (InsertImage (File.name file))
+        (File.toUrl file
+            |> Task.andThen
+                (\imageUrl ->
+                    Image imageUrl Nothing Nothing Nothing |> Task.succeed
+                )
+        )
 
 
 loadCatalog : Cmd Msg
@@ -340,13 +414,31 @@ saveCatalog data preferences =
     Download.string "imagerState.json" "application/json" (encodeSaveData data preferences)
 
 
+getImageDimensions filename =
+    Task.attempt (ImageDimensions filename)
+        (Dom.getElement (sizeCheckIdPrefix ++ filename))
+
+
+sizeCheckIdPrefix =
+    "sizeCheckPrefix"
+
+
 
 -- Update
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
+    let
+        { cViewport, cImages, cPreferences, cState } =
+            case model of
+                Model viewport_ images_ preferences_ state_ ->
+                    { cViewport = viewport_, cImages = images_, cPreferences = preferences_, cState = state_ }
+    in
     case msg of
+        ViewportChange viewport ->
+            ( model, Cmd.none )
+
         OpenImagePicker ->
             ( model, Select.files [ "image/png", "image/jpg" ] FilesReceived )
 
@@ -355,37 +447,53 @@ update msg model =
             , List.map insertImageFromFile (file :: otherFiles) |> Cmd.batch
             )
 
-        InsertImage filename (Ok imageUrl) ->
+        InsertImage filename (Ok image) ->
             case model of
-                Model images preferences state ->
-                    ( Model (Dict.insert filename imageUrl images) preferences state, Cmd.none )
+                Model viewport images preferences state ->
+                    ( Model
+                        viewport
+                        (Dict.insert filename image images)
+                        preferences
+                        state
+                    , getImageDimensions filename
+                    )
 
         InsertImage filename (Err _) ->
             ( model, Cmd.none )
 
         RemoveImage imageKey ->
             case model of
-                Model data preferences state ->
-                    ( Model (Dict.remove imageKey data) preferences state, Cmd.none )
+                Model viewport data preferences state ->
+                    ( Model viewport (Dict.remove imageKey data) preferences state, Cmd.none )
+
+        UpdateImage imageKey maybeImage ->
+            case maybeImage of
+                Just newImage ->
+                    ( Model cViewport (Dict.update imageKey (always (Just newImage)) cImages) cPreferences cState
+                    , Cmd.none
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
 
         UpdatePreferences preferences ->
             case model of
-                Model data _ state ->
-                    ( Model data preferences state, Cmd.none )
+                Model viewport data _ state ->
+                    ( Model viewport data preferences state, Cmd.none )
 
         UpdateView newState ->
             case model of
-                Model data preferences _ ->
-                    ( Model data preferences newState, Cmd.none )
+                Model viewport data preferences _ ->
+                    ( Model viewport data preferences newState, Cmd.none )
 
         SaveCatalog ->
             case model of
-                Model data preferences _ ->
+                Model _ data preferences _ ->
                     ( model, saveCatalog data preferences )
 
         LoadCatalog ->
             case model of
-                Model data _ _ ->
+                Model _ data _ _ ->
                     ( model, loadCatalog )
 
         CatalogFileReceived file ->
@@ -393,23 +501,55 @@ update msg model =
 
         CatalogDecoded (Ok jsonString) ->
             case model of
-                Model data preferences viewState ->
+                Model viewport data preferences viewState ->
                     let
                         dataAndPreferences =
-                            decodeSaveData jsonString |> (Maybe.withDefault <| Model data preferences)
+                            decodeSaveData viewport jsonString
+                                |> (Maybe.withDefault <| Model viewport data preferences)
                     in
                     ( dataAndPreferences viewState, Cmd.none )
 
         CatalogDecoded (Err _) ->
             ( model, Cmd.none )
 
+        GetImageDimensions filename ->
+            ( model, getImageDimensions filename )
 
-decodeSaveData : String -> Maybe (ViewState -> Model)
-decodeSaveData jsonString =
+        ImageDimensions filename result ->
+            case result of
+                Ok element ->
+                    ( Model cViewport
+                        (updateImageDimensions cImages filename element.element)
+                        cPreferences
+                        cState
+                    , Cmd.none
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+
+updateImageDimensions : Data -> Filename -> { r | width : Float, height : Float } -> Data
+updateImageDimensions data filename { width, height } =
+    Dict.update filename
+        (\value ->
+            case value of
+                Just image ->
+                    Just (Image image.imageUrl (Just { width = width, height = height }) Nothing Nothing)
+
+                Nothing ->
+                    Nothing
+        )
+        data
+
+
+decodeSaveData : Viewport -> String -> Maybe (ViewState -> Model)
+decodeSaveData viewport jsonString =
     jsonString
         |> Json.decodeString
-            (Json.map2
+            (Json.map3
                 Model
+                (Json.succeed viewport)
                 (Json.field "data" catalogDecoder)
                 (Json.field "preferences" preferencesDecoder)
             )
@@ -417,12 +557,17 @@ decodeSaveData jsonString =
         |> Result.withDefault Nothing
 
 
+encodeImage : Image -> Encode.Value
+encodeImage =
+    .imageUrl >> Encode.string
+
+
 encodeSaveData : Data -> Preferences -> String
 encodeSaveData data preferences =
     let
         catalogRecord =
             [ ( "version", 1 |> Encode.int )
-            , ( "data", data |> Encode.dict identity Encode.string )
+            , ( "data", data |> Encode.dict identity encodeImage )
             , ( "preferences", preferences |> preferencesEncoder )
             ]
     in
@@ -440,20 +585,67 @@ setStartingSlide imageKey slides =
 
 openSlideshowWith : ImageKey -> (List ImageKey -> ViewState)
 openSlideshowWith startingImage =
-    setStartingSlide startingImage >> SlideshowState False 0.0 >> Slideshow
+    setStartingSlide startingImage >> SlideshowState False >> Slideshow
 
 
 
 -- Subscriptions
 
 
+updateImageRotation : Data -> Float -> ImageKey -> Float -> Maybe Image
+updateImageRotation data defaultRotation imageKey delta =
+    let
+        boundedAdd =
+            \delta_ rotation ->
+                case ((rotation + delta_) > 0) && (rotation + delta_ < 1) of
+                    True ->
+                        rotation + delta_
+
+                    False ->
+                        (rotation + delta_) - (toFloat << round <| (rotation + delta_))
+
+        activeImage =
+            Dict.get imageKey data
+    in
+    activeImage
+        |> Maybe.andThen
+            (\image ->
+                Just { image | rotation = image.rotation |> Maybe.withDefault 0 |> boundedAdd delta |> Just }
+            )
+
+
+updateImageZoom : Data -> Float -> ImageKey -> Float -> Maybe Image
+updateImageZoom data defaultZoom imageKey delta =
+    let
+        boundedAdd =
+            \delta_ zoom ->
+                case ((zoom + delta_) > 0) && (zoom + delta_ <= 5) of
+                    True ->
+                        zoom + delta_
+
+                    False ->
+                        zoom
+
+        activeImage =
+            Dict.get imageKey data
+    in
+    activeImage
+        |> Maybe.andThen
+            (\image ->
+                Just { image | zoom = image.zoom |> Maybe.withDefault 1 |> boundedAdd delta |> Just }
+            )
+
+
 subscriptions : Model -> Sub Msg
 subscriptions model =
     case model of
-        Model data { slideshowSpeed, keyboardControls } state ->
+        Model _ data { slideshowSpeed, keyboardControls, defaultRotation, defaultZoom } state ->
             case state of
                 Slideshow currentState ->
                     let
+                        currentSlideKey =
+                            List.head currentState.slidelist
+
                         controls =
                             keyboardControls.slideshowMap
 
@@ -464,18 +656,51 @@ subscriptions model =
                                 msgWhenKeyOf controls.next (always <| stepSlideshow currentState Forward)
                             , Browser.onKeyUp <|
                                 msgWhenKeyOf controls.prev (always <| stepSlideshow currentState Backward)
-                            , Browser.onKeyUp <| msgWhenKeyOf controls.exit (always <| UpdateView (Preview (Catalog Nothing)))
                             , Browser.onKeyUp <|
-                                msgWhenKeyOf controls.rotate
+                                msgWhenKeyOf controls.exit (always <| UpdateView (Preview (Catalog Nothing)))
+                            , Browser.onKeyUp <|
+                                msgWhenKeyOf controls.rotateP
                                     (always <|
-                                        updateSlideshow
-                                            { currentState
-                                                | rotation = currentState.rotation + (pi / 2)
-                                            }
+                                        UpdateImage (currentSlideKey |> Maybe.withDefault "")
+                                            (updateImageRotation data
+                                                defaultRotation
+                                                (currentSlideKey |> Maybe.withDefault "")
+                                                rotationGranularity
+                                            )
+                                    )
+                            , Browser.onKeyUp <|
+                                msgWhenKeyOf controls.rotateM
+                                    (always <|
+                                        UpdateImage (currentSlideKey |> Maybe.withDefault "")
+                                            (updateImageRotation data
+                                                defaultRotation
+                                                (currentSlideKey |> Maybe.withDefault "")
+                                                -rotationGranularity
+                                            )
+                                    )
+                            , Browser.onKeyUp <|
+                                msgWhenKeyOf controls.zoomP
+                                    (always <|
+                                        UpdateImage (currentSlideKey |> Maybe.withDefault "")
+                                            (updateImageZoom data
+                                                defaultZoom
+                                                (currentSlideKey |> Maybe.withDefault "")
+                                                zoomGranularity
+                                            )
+                                    )
+                            , Browser.onKeyUp <|
+                                msgWhenKeyOf controls.zoomM
+                                    (always <|
+                                        UpdateImage (currentSlideKey |> Maybe.withDefault "")
+                                            (updateImageZoom data
+                                                defaultZoom
+                                                (currentSlideKey |> Maybe.withDefault "")
+                                                -zoomGranularity
+                                            )
                                     )
                             ]
                     in
-                    case currentState.running of
+                    case currentState.running && (Dict.size data > 1) of
                         True ->
                             navigationListeners
                                 |> (::)
@@ -496,19 +721,27 @@ subscriptions model =
                     Sub.batch
                         [ Browser.onKeyPress <|
                             msgWhenKeyOf controlKeys.startSlideshow
-                                (always <| UpdateView <| openSlideshowWith imageKey <| List.sort <| Dict.keys data)
+                                (always <|
+                                    UpdateView (openSlideshowWith imageKey <| List.sort <| Dict.keys data)
+                                )
                         , Browser.onKeyUp <|
                             msgWhenKeyOf controlKeys.closeCurrent
                                 (always <| UpdateView <| Preview (Catalog Nothing))
                         , Browser.onKeyUp <|
                             msgWhenKeyOf controlKeys.openCurrent
-                                (always <| UpdateView <| openSlideshowWith imageKey <| List.sort <| Dict.keys data)
+                                (always <|
+                                    UpdateView (openSlideshowWith imageKey <| List.sort <| Dict.keys data)
+                                )
                         , Browser.onKeyUp <|
                             msgWhenKeyOf [ "ArrowRight" ]
-                                (always <| UpdateView <| Preview (Focused (tupleList |> stepTupleList Forward)))
+                                (always <|
+                                    UpdateView (Preview (Focused (tupleList |> stepTupleList Forward)))
+                                )
                         , Browser.onKeyUp <|
                             msgWhenKeyOf [ "ArrowLeft" ]
-                                (always <| UpdateView <| Preview (Focused (tupleList |> stepTupleList Backward)))
+                                (always <|
+                                    UpdateView (Preview (Focused (tupleList |> stepTupleList Backward)))
+                                )
                         ]
 
                 Preview (Catalog imageList) ->
@@ -535,23 +768,31 @@ subscriptions model =
 
 
 preferencesEncoder : Preferences -> Encode.Value
-preferencesEncoder { slideshowSpeed, previewItemsPerRow, backgroundColor, keyboardControls } =
+preferencesEncoder preferences =
+    let
+        { slideshowSpeed, previewItemsPerRow, backgroundColor, keyboardControls, defaultRotation, defaultZoom } =
+            preferences
+    in
     Encode.object
         [ ( "slideshowSpeed", slideshowSpeed |> Encode.float )
         , ( "previewItemsPerRow", previewItemsPerRow |> Encode.int )
         , ( "backgroundColor", backgroundColor |> Color.toHex |> Encode.string )
         , ( "keyboardControls", keyboardControls |> keyboardControlsEncoder )
+        , ( "defaultRotation", defaultRotation |> Encode.float )
+        , ( "defaultZoom", defaultZoom |> Encode.float )
         ]
 
 
 preferencesDecoder : Json.Decoder Preferences
 preferencesDecoder =
-    Json.map4
+    Json.map6
         Preferences
         (Json.field "slideshowSpeed" Json.float)
         (Json.field "previewItemsPerRow" Json.int)
         (Json.field "backgroundColor" hexColorDecoder)
         (Json.field "keyboardControls" keyboardControlsDecoder)
+        (fieldWithDefault "defaultRotation" 0 Json.float)
+        (fieldWithDefault "defaultZoom" 1 Json.float)
 
 
 keyboardControlsEncoder : KeyboardMappings -> Encode.Value
@@ -563,6 +804,10 @@ keyboardControlsEncoder { slideshowMap, preferencesMap, previewMap } =
                 , ( "next", Encode.list Encode.string slideshowMap.next )
                 , ( "prev", Encode.list Encode.string slideshowMap.prev )
                 , ( "toggle", Encode.list Encode.string slideshowMap.toggle )
+                , ( "rotateP", Encode.list Encode.string slideshowMap.rotateP )
+                , ( "rotateM", Encode.list Encode.string slideshowMap.rotateM )
+                , ( "zoomP", Encode.list Encode.string slideshowMap.zoomP )
+                , ( "zoomM", Encode.list Encode.string slideshowMap.zoomM )
                 ]
           )
         , ( "preferenceMap"
@@ -580,50 +825,49 @@ keyboardControlsEncoder { slideshowMap, preferencesMap, previewMap } =
         ]
 
 
+fieldWithDefault : String -> a -> Json.Decoder a -> Json.Decoder a
+fieldWithDefault fieldLabel default decoder =
+    Json.andThen
+        (\maybeField ->
+            case maybeField of
+                Just value ->
+                    Json.succeed value
+
+                Nothing ->
+                    Json.succeed default
+        )
+        (Json.maybe
+            (Json.field fieldLabel decoder)
+        )
+
+
 keyboardControlsDecoder : Json.Decoder KeyboardMappings
 keyboardControlsDecoder =
     Json.map3
         KeyboardMappings
         (Json.field "slideshowMap"
-            (Json.map5 SlideshowMap
-                (Json.field "next" (Json.list Json.string))
-                (Json.field "prev" (Json.list Json.string))
-                (Json.field "exit" (Json.list Json.string))
-                (Json.field "toggle" (Json.list Json.string))
-                (Json.andThen
-                    (\m ->
-                        case m of
-                            Just v ->
-                                Json.succeed v
-
-                            Nothing ->
-                                Json.succeed [ "\\" ]
-                    )
-                    (Json.maybe
-                        (Json.field "rotate" (Json.succeed [ "\\" ]))
-                    )
-                )
-             --Json.field "rotate" [ "\\" ]
-             -- (Json.field "rotate"
-             --     (Json.oneOf
-             --         [ Json.list Json.string
-             --         , Json.succeed [ "\\" ] -- default
-             --         ]
-             --     )
-             -- )
+            (Json.map8 SlideshowMap
+                (fieldWithDefault "next" defaultSlideshowMap.next (Json.list Json.string))
+                (fieldWithDefault "prev" defaultSlideshowMap.prev (Json.list Json.string))
+                (fieldWithDefault "exit" defaultSlideshowMap.exit (Json.list Json.string))
+                (fieldWithDefault "toggle" defaultSlideshowMap.toggle (Json.list Json.string))
+                (fieldWithDefault "rotateP" defaultSlideshowMap.rotateP (Json.list Json.string))
+                (fieldWithDefault "rotateM" defaultSlideshowMap.rotateM (Json.list Json.string))
+                (fieldWithDefault "zoomP" defaultSlideshowMap.zoomP (Json.list Json.string))
+                (fieldWithDefault "zoomM" defaultSlideshowMap.zoomM (Json.list Json.string))
             )
         )
         (Json.field "preferenceMap"
             (Json.map
                 PreferencesMap
-                (Json.field "exit" (Json.list Json.string))
+                (fieldWithDefault "exit" defaultPreferencesMap.exit (Json.list Json.string))
             )
         )
         (Json.field "previewMap"
             (Json.map3 PreviewMap
-                (Json.field "openCurrent" (Json.list Json.string))
-                (Json.field "closeCurrent" (Json.list Json.string))
-                (Json.field "startSlideshow" (Json.list Json.string))
+                (fieldWithDefault "openCurrent" defaultPreviewMap.openCurrent (Json.list Json.string))
+                (fieldWithDefault "closeCurrent" defaultPreviewMap.closeCurrent (Json.list Json.string))
+                (fieldWithDefault "startSlideshow" defaultPreviewMap.startSlideshow (Json.list Json.string))
             )
         )
 
@@ -634,9 +878,24 @@ hexColorDecoder =
         |> Json.andThen (always <| Json.succeed defaultBackground)
 
 
-catalogDecoder : Json.Decoder Data
+unconsDataUriData : DataUri.Data -> Maybe Bytes
+unconsDataUriData data =
+    case data of
+        DataUri.Base64 bytes ->
+            Just bytes
+
+        DataUri.Raw raw ->
+            Nothing
+
+
+decodeImage : String -> Json.Decoder Image
+decodeImage imageUrl =
+    Json.succeed { imageUrl = imageUrl, nativeDimensions = Nothing, rotation = Nothing, zoom = Nothing }
+
+
+catalogDecoder : Json.Decoder (Dict ImageKey Image)
 catalogDecoder =
-    Json.keyValuePairs Json.string
+    Json.keyValuePairs (Json.string |> Json.andThen decodeImage)
         |> Json.andThen (Json.succeed << Dict.fromList)
 
 
@@ -660,7 +919,7 @@ Select and transform our Model data into set of required data for the current vi
 viewSelector : Model -> ViewModel
 viewSelector model =
     case model of
-        Model data preferences viewState ->
+        Model viewport data preferences viewState ->
             let
                 fullImageList =
                     Dict.toList data
@@ -678,6 +937,7 @@ viewSelector model =
                         { imagesPerRow = preferences.previewItemsPerRow
                         , backgroundColor = backgroundColor
                         , imageSelection = Just <| Dict.keys data
+                        , dimensionlessImages = selectDimensionlessImages data
                         }
 
                 Preview (Focused ( imageKey, imageList )) ->
@@ -693,9 +953,10 @@ viewSelector model =
                         { imagesPerRow = preferences.previewItemsPerRow
                         , backgroundColor = backgroundColor
                         , imageSelection = Just imageList
+                        , dimensionlessImages = selectDimensionlessImages data
                         }
 
-                Slideshow { running, rotation, slidelist } ->
+                Slideshow { running, slidelist } ->
                     case List.filterMap (getFromDict data) slidelist of
                         [] ->
                             PreviewView fullImageList
@@ -703,13 +964,24 @@ viewSelector model =
                                 { imagesPerRow = preferences.previewItemsPerRow
                                 , backgroundColor = backgroundColor
                                 , imageSelection = Nothing
+                                , dimensionlessImages = selectDimensionlessImages data
                                 }
 
                         firstImage :: images ->
                             SlideshowView firstImage
                                 { backgroundColor = backgroundColor
-                                , rotation = rotation
+                                , defaultRotation = preferences.defaultRotation
+                                , defaultZoom = preferences.defaultZoom
+                                , width = viewport.viewport.width
+                                , height = viewport.viewport.height
+                                , dimensionlessImages = selectDimensionlessImages data
                                 }
+
+
+selectDimensionlessImages : Data -> List ( Filename, Image )
+selectDimensionlessImages data =
+    Dict.filter (\_ value -> value.nativeDimensions == Nothing) data
+        |> Dict.toList
 
 
 renderView : ViewModel -> Html Msg
@@ -723,20 +995,32 @@ renderView model =
                 _ ->
                     Element.none
 
+        getDimensionList =
+            case model of
+                PreviewView _ _ { dimensionlessImages } ->
+                    dimensionlessImages
+
+                SlideshowView _ { dimensionlessImages } ->
+                    dimensionlessImages
+
+                SettingsView _ ->
+                    []
+
         content =
             case model of
                 PreviewView images _ preferences ->
                     Element.column
-                        [ width fill, height fill, Background.color preferences.backgroundColor ]
+                        [ width fill, height fill, Element.clipX, Background.color preferences.backgroundColor ]
                         [ imageHeader model
                         , filePreviewView images preferences
                         ]
 
-                SlideshowView currentImage { backgroundColor, rotation } ->
+                SlideshowView currentImage { backgroundColor, defaultRotation, defaultZoom, width, height } ->
                     Element.el
-                        [ width fill, height fill, Background.color backgroundColor ]
-                        (slideshowView currentImage rotation)
+                        [ Element.width fill, Element.height fill, Background.color backgroundColor ]
+                        (slideshowViewElement currentImage { width = width, height = height } defaultRotation defaultZoom)
 
+                --  (slideshowView currentImage rotation width height)
                 SettingsView ({ backgroundColor } as preferences) ->
                     Element.column
                         [ width fill, height fill, Background.color (backgroundColor |> rgbPaletteColor) ]
@@ -745,7 +1029,32 @@ renderView model =
                         ]
     in
     content
-        |> Element.layout [ height fill, width fill, inFront <| overlay ]
+        |> Element.layout
+            [ height fill, width fill, inFront <| overlay, Element.onRight (dimensionGetter getDimensionList) ]
+
+
+dimensionGetter : List ( Filename, Image ) -> Element Msg
+dimensionGetter dimensionlessImages =
+    Element.row []
+        (List.map
+            (\( filename, image ) ->
+                Element.image
+                    [ elementId (sizeCheckIdPrefix ++ filename)
+                    , onElementImageLoad
+                        (Json.succeed (GetImageDimensions filename))
+                    ]
+                    { src = image.imageUrl, description = "" }
+            )
+            dimensionlessImages
+        )
+
+
+elementId =
+    Html.Attributes.id >> Element.htmlAttribute
+
+
+onElementImageLoad =
+    Html.Events.on "load" >> Element.htmlAttribute
 
 
 imageHeader : ViewModel -> Element Msg
@@ -884,10 +1193,18 @@ colorPickerBox colorChangeMsg color =
         Element.none
 
 
+degreesSymbol =
+    Char.fromCode 0xB0
+
+
+percentSymbol =
+    Char.fromCode 0xFE6A
+
+
 editPreferencesView : Preferences -> Element Msg
 editPreferencesView preferences =
     let
-        { slideshowSpeed, backgroundColor, previewItemsPerRow, keyboardControls } =
+        { slideshowSpeed, backgroundColor, previewItemsPerRow, keyboardControls, defaultRotation, defaultZoom } =
             preferences
     in
     Element.el
@@ -967,6 +1284,66 @@ editPreferencesView preferences =
                     [ width <| Element.fillPortion 4, height (20 |> px) ]
                     (colorPicker (\newColor -> UpdatePreferences { preferences | backgroundColor = newColor }))
                 ]
+            , Input.slider
+                [ width <| Element.fillPortion 4
+                , Element.behindContent <|
+                    Element.el
+                        [ Background.color <| rgba255 255 255 255 1
+                        , height (5 |> px)
+                        , width fill
+                        , Element.centerY
+                        ]
+                        Element.none
+                ]
+                { onChange =
+                    \newAngle ->
+                        UpdatePreferences
+                            { preferences | defaultRotation = newAngle }
+                , label =
+                    Input.labelLeft
+                        [ Font.color <| rgba255 250 250 250 1.0, width <| Element.fillPortion 1 ]
+                        (Element.text
+                            ("Default Image Rotation = "
+                                ++ String.fromFloat ((defaultRotation * 360) |> round |> toFloat)
+                                ++ (String.fromChar <| degreesSymbol)
+                            )
+                        )
+                , min = 0
+                , max = 1
+                , value = defaultRotation
+                , thumb = Input.defaultThumb
+                , step = Just rotationGranularity
+                }
+            , Input.slider
+                [ width <| Element.fillPortion 4
+                , Element.behindContent <|
+                    Element.el
+                        [ Background.color <| rgba255 255 255 255 1
+                        , height (5 |> px)
+                        , width fill
+                        , Element.centerY
+                        ]
+                        Element.none
+                ]
+                { onChange =
+                    \newZoom ->
+                        UpdatePreferences
+                            { preferences | defaultZoom = newZoom }
+                , label =
+                    Input.labelLeft
+                        [ Font.color <| rgba255 250 250 250 1.0, width <| Element.fillPortion 1 ]
+                        (Element.text
+                            ("Default Image Zoom = "
+                                ++ (String.fromInt << round) (defaultZoom * 100)
+                                ++ (String.fromChar <| percentSymbol)
+                            )
+                        )
+                , min = zoomGranularity
+                , max = 5
+                , value = defaultZoom
+                , thumb = Input.defaultThumb
+                , step = Just zoomGranularity
+                }
 
             -- , Element.row [ width fill, height Element.fill ]
             --     [ Element.el [ width <| Element.fillPortion 1, Font.color <| rgb 1 1 1 ] <|
@@ -1050,7 +1427,7 @@ keyboardMappingPreferences { slideshowMap, preferencesMap, previewMap } =
 
 
 filePreviewView :
-    List ( ImageKey, ImageUrl )
+    List ( ImageKey, Image )
     ->
         { r
             | imagesPerRow : Int
@@ -1067,6 +1444,7 @@ filePreviewView images { imagesPerRow, backgroundColor, imageSelection } =
         , Element.padding 5
         ]
         (images
+            |> List.map (Tuple.mapBoth identity .imageUrl)
             |> List.sort
             |> List.greedyGroupsOf imagesPerRow
             |> List.map
@@ -1143,8 +1521,10 @@ previewImageControls otherSelected imageKey =
 
 
 previewImage : List ImageKey -> ( ImageKey, ImageUrl ) -> Element Msg
-previewImage otherSelected ( imageKey, imageSrc ) =
+previewImage otherSelected ( imageKey, imageUrl ) =
     let
+        -- imageUrl =
+        --     .imageUrl imageSrc
         orderedSelected =
             otherSelected
                 |> List.splitWhen ((==) imageKey)
@@ -1165,14 +1545,18 @@ previewImage otherSelected ( imageKey, imageSrc ) =
             , centerY
             , inFront <| previewImageControls orderedSelected imageKey
             ]
-            { src = imageSrc
+            { src = imageUrl
             , description = ""
             }
         )
 
 
-expandedImage : ImageUrl -> Element Msg
-expandedImage imageUrl =
+expandedImage : Image -> Element Msg
+expandedImage imageSrc =
+    let
+        imageUrl =
+            .imageUrl imageSrc
+    in
     Element.el
         [ width fill
         , height fill
@@ -1200,32 +1584,206 @@ expandedImage imageUrl =
         )
 
 
+imageDimensionsWithDefaults :
+    ( Element.Length, Element.Length )
+    -> Maybe { element | width : Float, height : Float }
+    -> ( Element.Length, Element.Length )
+imageDimensionsWithDefaults default mDim =
+    let
+        toPx =
+            round >> px
+    in
+    case mDim of
+        Just { width, height } ->
+            Tuple.mapBoth toPx toPx ( width, height )
+
+        Nothing ->
+            default
+
+
+aspectRatio : { viewport | width : Float, height : Float } -> Float
+aspectRatio { width, height } =
+    width / height
+
+
+scaleImageToViewport :
+    { viewport | width : Float, height : Float }
+    -> { image | width : Float, height : Float }
+    -> { width : Float, height : Float }
+scaleImageToViewport viewport image =
+    let
+        ( widthRatio, heightRatio ) =
+            ( image.width / viewport.width
+            , image.height / viewport.height
+            )
+
+        heightLimited =
+            widthRatio < heightRatio
+    in
+    case heightLimited of
+        True ->
+            { width = image.width / heightRatio
+            , height = image.height / heightRatio
+            }
+
+        False ->
+            { width = image.width / widthRatio
+            , height = image.height / widthRatio
+            }
+
+
+slideshowViewElement : Image -> { viewport | width : Float, height : Float } -> Float -> Float -> Element Msg
+slideshowViewElement image viewport defaultRotation defaultZoom =
+    let
+        defaultDimensions =
+            ( fill, fill )
+
+        rotation =
+            image.rotation |> Maybe.withDefault defaultRotation
+
+        zoom =
+            image.zoom |> Maybe.withDefault defaultZoom
+
+        nativeScaled =
+            image.nativeDimensions
+                |> Maybe.andThen (Just << scaleImageToViewport viewport)
+                |> Maybe.withDefault { width = viewport.width, height = viewport.height }
+
+        ( imageWidth, imageHeight ) =
+            image.nativeDimensions
+                |> Maybe.andThen (Just << scaleImageToViewport viewport)
+                |> imageDimensionsWithDefaults defaultDimensions
+
+        imageUrl =
+            image.imageUrl
+
+        radians =
+            turns rotation
+
+        rotatedDimensions =
+            Debug.log "rotatedDims"
+                (Debug.log "nativeScaled" nativeScaled
+                    |> rotatedDims rotation
+                )
+
+        scaledRotated =
+            scaleImageToViewport viewport rotatedDimensions
+    in
+    Element.image
+        [ width imageWidth
+        , height imageHeight
+        , rotate radians
+        , centerX
+        , centerY
+        , scale <| (*) zoom <| (scaledRotated.width / rotatedDimensions.width)
+
+        -- Basics.min (scaledRotated.height / rotatedDimensions.height)
+        ]
+        { src = imageUrl, description = "Current Slide Image" }
+        |> Element.el [ width fill, height fill ]
+
+
+rotatedDims :
+    Float
+    -> { element | width : Float, height : Float }
+    -> { width : Float, height : Float }
+rotatedDims rotation ({ width, height } as dims) =
+    let
+        radians =
+            turns rotation
+
+        s =
+            abs <| sin radians
+
+        c =
+            abs <| cos radians
+    in
+    { width = c * width + s * height
+    , height = s * width + c * height
+    }
+
+
+hypotenuse : { r | width : Float, height : Float } -> Float
+hypotenuse { width, height } =
+    sqrt (width ^ 2 + height ^ 2)
+
+
 {-| slideshowView
 Use of Html.img due to Element.img not respecting parent height with base64 encoded image
 -}
-slideshowView : String -> Float -> Element Msg
-slideshowView imageUrl rotation =
+slideshowView : Image -> Float -> { viewport | width : Float, height : Float } -> Element Msg
+slideshowView image rotation { width, height } =
     let
         url =
-            imageUrl
+            image.imageUrl
+
+        ( intHeight, intWidth ) =
+            ( Basics.round height, Basics.round width )
+
+        ( maxWidth, maxHeight ) =
+            case rotation == 0 of
+                True ->
+                    ( style "max-height" (String.fromInt intHeight ++ "px")
+                    , style "max-width" (String.fromInt intWidth ++ "px")
+                    )
+
+                _ ->
+                    ( style "max-height" (String.fromInt intWidth ++ "px")
+                    , style "max-width" (String.fromInt intHeight ++ "px")
+                    )
+
+        ( sWidth, sHeight ) =
+            case rotation == 0 of
+                True ->
+                    ( style "height" (String.fromInt intHeight ++ "px")
+                    , style "width" (String.fromInt intWidth ++ "px")
+                    )
+
+                _ ->
+                    ( style "height" (String.fromInt intWidth ++ "px")
+                    , style "width" (String.fromInt intHeight ++ "px")
+                    )
+
+        transform =
+            case rotation == 0 of
+                True ->
+                    style "transform"
+                        (""
+                            ++ "rotate("
+                            ++ String.fromFloat 0
+                            ++ "deg) "
+                        )
+
+                _ ->
+                    style "transform"
+                        (""
+                            ++ "rotate("
+                            ++ String.fromFloat 90.0
+                            ++ "deg) "
+                        )
     in
     Element.el
         [ Element.clip
-        , width fill
-        , height fill
-        , Element.rotate rotation
+        , Element.width fill
+        , Element.height fill
         ]
         (Element.html
-            (Html.img
-                --  Black CSS Magic to make image fit within bounds at normal aspect ratio
-                [ src url
-                , style "position" "absolute"
-                , style "object-fit" "contain"
-                , style "height" "100%"
+            (Html.div
+                [ style "height" "100%"
                 , style "width" "100%"
-                , style "max-height" "100%"
-                , style "max-width" "100%"
+                , style "position" "absolute"
                 ]
-                []
+                [ Html.img
+                    --  Black CSS Magic to make image fit within bounds at normal aspect ratio
+                    [ src url
+                    , style "object-fit" "contain"
+                    , transform
+                    , sHeight
+                    , sWidth
+                    , maxHeight
+                    , maxWidth
+                    ]
+                    []
+                ]
             )
         )

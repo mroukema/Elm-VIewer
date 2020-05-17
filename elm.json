@@ -8,6 +8,7 @@
         "direct": {
             "1602/elm-feather": "2.3.5",
             "elm/browser": "1.0.2",
+            "elm/bytes": "1.0.8",
             "elm/core": "1.0.2",
             "elm/file": "1.0.5",
             "elm/html": "1.0.0",
@@ -16,12 +17,22 @@
             "elm/time": "1.0.0",
             "elm/url": "1.0.0",
             "elm-community/list-extra": "8.2.2",
+            "justgook/elm-image": "4.0.0",
             "mdgriffith/elm-ui": "1.1.5",
+            "munksgaard/elm-data-uri": "1.0.1",
             "tesk9/palette": "2.0.0"
         },
         "indirect": {
-            "elm/bytes": "1.0.8",
-            "elm/virtual-dom": "1.0.2"
+            "avh4/elm-color": "1.0.0",
+            "danfishgold/base64-bytes": "1.0.3",
+            "elm/http": "2.0.0",
+            "elm/parser": "1.1.0",
+            "elm/random": "1.0.0",
+            "elm/virtual-dom": "1.0.2",
+            "elm-community/basics-extra": "4.1.0",
+            "elm-explorations/test": "1.2.2",
+            "folkertdev/elm-flate": "2.0.4",
+            "munksgaard/elm-media-type": "1.1.0"
         }
     },
     "test-dependencies": {

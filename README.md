@@ -13,7 +13,8 @@ Runs in browser tab so it can be casted in background. Displays images from loca
   - [ ] Handle ImageKey conflicts when ImageUrl is different
   - [ ] Detect and remove images with duplicate image data
   - [x] Improve on screen controls for removing images
-  - [ ] Allow for image transformations (rotation, mirror, zoom)
+  - [x] Allow for image transformations (rotation, zoom)
+  - [ ] Allow for image transformations (mirror)
   - [ ] Collections of images
   - [x] Persistence via saveFile
   - [ ] Secure any persisted data
