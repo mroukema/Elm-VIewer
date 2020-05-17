@@ -216,6 +216,9 @@ type ViewModel
         , backgroundColor : Element.Color
         , imageSelection : Maybe (List ImageKey)
         , dimensionlessImages : List ( ImageKey, LoadingImage )
+        , viewport : Dom.Viewport
+        , defaultRotation : Float
+        , defaultZoom : Float
         }
     | SlideshowView
         ReadyImage
@@ -260,6 +263,8 @@ type alias FocusedImage =
     ImageKey
 
 
+{-| An image is Loading until we have computed native (natural) image dimensions
+-}
 type alias LoadingImage =
     { imageUrl : ImageUrl
     , rotation : Maybe Float
@@ -267,6 +272,8 @@ type alias LoadingImage =
     }
 
 
+{-| An image is ready to be displayed when we have computed native (natural) image dimensions
+-}
 type alias ReadyImage =
     { imageUrl : ImageUrl
     , nativeDimensions : { width : Float, height : Float }
@@ -275,15 +282,21 @@ type alias ReadyImage =
     }
 
 
+{-| An Image can be ready to be displayed or can still be processing
+-}
 type Image
     = Processing LoadingImage
     | Ready ReadyImage
 
 
+{-| Dict of all the { Image Key : Image Data }
+-}
 type alias Data =
     Dict ImageKey Image
 
 
+{-| Common app preferences
+-}
 type alias Preferences =
     { slideshowSpeed : Float
     , previewItemsPerRow : Int
@@ -926,16 +939,6 @@ hexColorDecoder =
         |> Json.andThen (always <| Json.succeed defaultBackground)
 
 
-unconsDataUriData : DataUri.Data -> Maybe Bytes
-unconsDataUriData data =
-    case data of
-        DataUri.Base64 bytes ->
-            Just bytes
-
-        DataUri.Raw raw ->
-            Nothing
-
-
 decodeImage : String -> Json.Decoder Image
 decodeImage imageUrl =
     Json.succeed <| Processing { imageUrl = imageUrl, rotation = Nothing, zoom = Nothing }
@@ -969,11 +972,11 @@ viewSelector model =
     case model of
         Model viewport data preferences viewState ->
             let
-                ( fullImageList, dimlessImages ) =
-                    partitionDimensionlessImages data
+                ( readyImages, processingImages ) =
+                    partitionReadyImages data
 
-                dimImageDict =
-                    Dict.fromList fullImageList
+                readyImageDict =
+                    Dict.fromList readyImages
 
                 backgroundColor =
                     preferences.backgroundColor |> rgbPaletteColor
@@ -983,39 +986,48 @@ viewSelector model =
                     SettingsView preferences
 
                 Preview (Catalog imageList) ->
-                    PreviewView fullImageList
+                    PreviewView readyImages
                         Nothing
                         { imagesPerRow = preferences.previewItemsPerRow
                         , backgroundColor = backgroundColor
                         , imageSelection = Just <| Dict.keys data
-                        , dimensionlessImages = selectDimensionlessImages data
+                        , dimensionlessImages = processingImages
+                        , viewport = viewport
+                        , defaultRotation = preferences.defaultRotation
+                        , defaultZoom = preferences.defaultZoom
                         }
 
                 Preview (Focused ( imageKey, imageList )) ->
                     let
                         focusedImage =
-                            dimImageDict
+                            readyImageDict
                                 |> Dict.get imageKey
                                 |> Maybe.andThen (Just << Tuple.pair imageKey)
                     in
                     PreviewView
-                        fullImageList
+                        readyImages
                         focusedImage
                         { imagesPerRow = preferences.previewItemsPerRow
                         , backgroundColor = backgroundColor
                         , imageSelection = Just imageList
-                        , dimensionlessImages = selectDimensionlessImages data
+                        , dimensionlessImages = processingImages
+                        , viewport = viewport
+                        , defaultRotation = preferences.defaultRotation
+                        , defaultZoom = preferences.defaultZoom
                         }
 
                 Slideshow { running, slidelist } ->
-                    case List.filterMap (getFromDict dimImageDict) slidelist of
+                    case List.filterMap (getFromDict readyImageDict) slidelist of
                         [] ->
-                            PreviewView fullImageList
+                            PreviewView readyImages
                                 Nothing
                                 { imagesPerRow = preferences.previewItemsPerRow
                                 , backgroundColor = backgroundColor
                                 , imageSelection = Nothing
-                                , dimensionlessImages = selectDimensionlessImages data
+                                , dimensionlessImages = processingImages
+                                , viewport = viewport
+                                , defaultRotation = preferences.defaultRotation
+                                , defaultZoom = preferences.defaultZoom
                                 }
 
                         firstImage :: images ->
@@ -1025,43 +1037,23 @@ viewSelector model =
                                 , defaultZoom = preferences.defaultZoom
                                 , width = viewport.viewport.width
                                 , height = viewport.viewport.height
-                                , dimensionlessImages = selectDimensionlessImages data
+                                , dimensionlessImages = processingImages
                                 }
 
 
-selectDimensionlessImages : Data -> List ( Filename, LoadingImage )
-selectDimensionlessImages data =
+partitionReadyImages : Data -> ( List ( Filename, ReadyImage ), List ( Filename, LoadingImage ) )
+partitionReadyImages data =
     Dict.foldl
-        (\key value accum ->
+        (\key value ( ready, processing ) ->
             case value of
                 Processing pImage ->
-                    ( key, pImage ) :: accum
-
-                Ready _ ->
-                    accum
-        )
-        []
-        data
-
-
-partitionDimensionlessImages : Data -> ( List ( Filename, ReadyImage ), List ( Filename, LoadingImage ) )
-partitionDimensionlessImages data =
-    Dict.foldl
-        (\key value ( dim, dimless ) ->
-            case value of
-                Processing pImage ->
-                    ( dim, ( key, pImage ) :: dimless )
+                    ( ready, ( key, pImage ) :: processing )
 
                 Ready rImage ->
-                    ( ( key, rImage ) :: dim, dimless )
+                    ( ( key, rImage ) :: ready, processing )
         )
         ( [], [] )
         data
-
-
-
--- |> Dict.foldl (k -> v -> b -> b) b
--- |> Dict.toList
 
 
 renderView : ViewModel -> Html Msg
@@ -1069,8 +1061,8 @@ renderView model =
     let
         overlay =
             case model of
-                PreviewView _ (Just ( imageKey, imageUrl )) _ ->
-                    expandedImage imageUrl
+                PreviewView _ (Just ( imageKey, image )) ({ viewport } as options) ->
+                    expandedImage image viewport.viewport options
 
                 _ ->
                     Element.none
@@ -1103,7 +1095,6 @@ renderView model =
                             options
                         )
 
-                --  (slideshowView currentImage rotation width height)
                 SettingsView ({ backgroundColor } as preferences) ->
                     Element.column
                         [ width fill, height fill, Background.color (backgroundColor |> rgbPaletteColor) ]
@@ -1127,8 +1118,6 @@ dimensionGetter dimensionlessImages =
             (\( filename, image ) ->
                 Element.image
                     [ elementId (sizeCheckIdPrefix ++ filename)
-                    , onElementImageLoad
-                        (Json.succeed (GetImageDimensions filename))
                     ]
                     { src = image.imageUrl, description = "" }
             )
@@ -1138,10 +1127,6 @@ dimensionGetter dimensionlessImages =
 
 elementId =
     Html.Attributes.id >> Element.htmlAttribute
-
-
-onElementImageLoad =
-    Html.Events.on "load" >> Element.htmlAttribute
 
 
 imageHeader : ViewModel -> Element Msg
@@ -1291,7 +1276,10 @@ percentSymbol =
 editPreferencesView : Preferences -> Element Msg
 editPreferencesView preferences =
     let
-        { slideshowSpeed, backgroundColor, previewItemsPerRow, keyboardControls, defaultRotation, defaultZoom } =
+        { slideshowSpeed, backgroundColor, previewItemsPerRow } =
+            preferences
+
+        { keyboardControls, defaultRotation, defaultZoom } =
             preferences
     in
     Element.el
@@ -1531,8 +1519,7 @@ filePreviewView images { imagesPerRow, backgroundColor, imageSelection } =
         , Element.padding 5
         ]
         (images
-            |> List.map (Tuple.mapBoth identity .imageUrl)
-            |> List.sort
+            |> List.sortBy (Tuple.mapSecond .imageUrl)
             |> List.greedyGroupsOf imagesPerRow
             |> List.map
                 (\group ->
@@ -1607,11 +1594,9 @@ previewImageControls otherSelected imageKey =
         |> Element.el [ width fill, height fill ]
 
 
-previewImage : List ImageKey -> ( ImageKey, ImageUrl ) -> Element Msg
-previewImage otherSelected ( imageKey, imageUrl ) =
+previewImage : List ImageKey -> ( ImageKey, ReadyImage ) -> Element Msg
+previewImage otherSelected ( imageKey, { imageUrl } ) =
     let
-        -- imageUrl =
-        --     .imageUrl imageSrc
         orderedSelected =
             otherSelected
                 |> List.splitWhen ((==) imageKey)
@@ -1638,11 +1623,15 @@ previewImage otherSelected ( imageKey, imageUrl ) =
         )
 
 
-expandedImage : ReadyImage -> Element Msg
-expandedImage imageSrc =
+expandedImage :
+    ReadyImage
+    -> { viewport | height : Float, width : Float }
+    -> { options | defaultRotation : Float, defaultZoom : Float }
+    -> Element Msg
+expandedImage image viewport options =
     let
         imageUrl =
-            .imageUrl imageSrc
+            .imageUrl image
     in
     Element.el
         [ width fill
@@ -1655,19 +1644,20 @@ expandedImage imageSrc =
             , height fill
             , inFront <| squareXIconControl <| UpdateView <| Preview <| Catalog Nothing
             ]
-            (Element.html <|
-                Html.img
-                    --  Black CSS Magic to make image fit within bounds at normal aspect ratio
-                    [ src imageUrl
-                    , style "position" "absolute"
-                    , style "object-fit" "contain"
-                    , style "height" "100%"
-                    , style "width" "100%"
-                    , style "max-height" "100%"
-                    , style "max-width" "100%"
-                    ]
-                    []
-            )
+            (slideshowViewElement image viewport options)
+         -- Element.html <|
+         --     Html.img
+         --         --  Black CSS Magic to make image fit within bounds at normal aspect ratio
+         --         [ src imageUrl
+         --         , style "position" "absolute"
+         --         , style "object-fit" "contain"
+         --         , style "height" "100%"
+         --         , style "width" "100%"
+         --         , style "max-height" "100%"
+         --         , style "max-width" "100%"
+         --         ]
+         --         []
+         -- )
         )
 
 
@@ -1681,11 +1671,6 @@ imagePxDimensions default { width, height } =
             round >> px
     in
     Tuple.mapBoth toPx toPx ( width, height )
-
-
-aspectRatio : { viewport | width : Float, height : Float } -> Float
-aspectRatio { width, height } =
-    width / height
 
 
 scaleImageToViewport :
@@ -1761,8 +1746,6 @@ slideshowViewElement image viewport { defaultRotation, defaultZoom } =
         , centerX
         , centerY
         , scale <| (*) zoom <| (scaledRotated.width / rotatedDimensions.width)
-
-        -- Basics.min (scaledRotated.height / rotatedDimensions.height)
         ]
         { src = imageUrl, description = "Current Slide Image" }
         |> Element.el [ width fill, height fill ]
@@ -1786,89 +1769,3 @@ rotatedDims rotation ({ width, height } as dims) =
     { width = c * width + s * height
     , height = s * width + c * height
     }
-
-
-hypotenuse : { r | width : Float, height : Float } -> Float
-hypotenuse { width, height } =
-    sqrt (width ^ 2 + height ^ 2)
-
-
-{-| slideshowView
-Use of Html.img due to Element.img not respecting parent height with base64 encoded image
--}
-slideshowView : ReadyImage -> Float -> { viewport | width : Float, height : Float } -> Element Msg
-slideshowView image rotation { width, height } =
-    let
-        url =
-            image.imageUrl
-
-        ( intHeight, intWidth ) =
-            ( Basics.round height, Basics.round width )
-
-        ( maxWidth, maxHeight ) =
-            case rotation == 0 of
-                True ->
-                    ( style "max-height" (String.fromInt intHeight ++ "px")
-                    , style "max-width" (String.fromInt intWidth ++ "px")
-                    )
-
-                _ ->
-                    ( style "max-height" (String.fromInt intWidth ++ "px")
-                    , style "max-width" (String.fromInt intHeight ++ "px")
-                    )
-
-        ( sWidth, sHeight ) =
-            case rotation == 0 of
-                True ->
-                    ( style "height" (String.fromInt intHeight ++ "px")
-                    , style "width" (String.fromInt intWidth ++ "px")
-                    )
-
-                _ ->
-                    ( style "height" (String.fromInt intWidth ++ "px")
-                    , style "width" (String.fromInt intHeight ++ "px")
-                    )
-
-        transform =
-            case rotation == 0 of
-                True ->
-                    style "transform"
-                        (""
-                            ++ "rotate("
-                            ++ String.fromFloat 0
-                            ++ "deg) "
-                        )
-
-                _ ->
-                    style "transform"
-                        (""
-                            ++ "rotate("
-                            ++ String.fromFloat 90.0
-                            ++ "deg) "
-                        )
-    in
-    Element.el
-        [ Element.clip
-        , Element.width fill
-        , Element.height fill
-        ]
-        (Element.html
-            (Html.div
-                [ style "height" "100%"
-                , style "width" "100%"
-                , style "position" "absolute"
-                ]
-                [ Html.img
-                    --  Black CSS Magic to make image fit within bounds at normal aspect ratio
-                    [ src url
-                    , style "object-fit" "contain"
-                    , transform
-                    , sHeight
-                    , sWidth
-                    , maxHeight
-                    , maxWidth
-                    ]
-                    []
-                ]
-            )
-        )

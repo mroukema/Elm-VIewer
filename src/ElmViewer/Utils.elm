@@ -2,6 +2,7 @@ module ElmViewer.Utils exposing
     ( Direction(..)
     , flip
     , getFromDict
+    , msgKeyWhen
     , msgWhenKeyOf
     , rgbPaletteColor
     , seconds
@@ -75,6 +76,21 @@ rgbPaletteColor =
 
 
 -- Decoders
+
+
+msgKeyWhen conditions msg =
+    Json.map msg
+        (Json.field "key" Json.string
+            |> Json.andThen
+                (\key ->
+                    case List.all (\condition -> condition key) conditions of
+                        True ->
+                            Json.succeed key
+
+                        False ->
+                            Json.fail key
+                )
+        )
 
 
 msgWhenKeyOf : List String -> (String -> msg) -> Json.Decoder msg
