@@ -610,7 +610,7 @@ updateImageRotation data defaultRotation imageKey delta =
     activeImage
         |> Maybe.andThen
             (\image ->
-                Just { image | rotation = image.rotation |> Maybe.withDefault 0 |> boundedAdd delta |> Just }
+                Just { image | rotation = image.rotation |> Maybe.withDefault defaultRotation |> boundedAdd delta |> Just }
             )
 
 
@@ -632,7 +632,7 @@ updateImageZoom data defaultZoom imageKey delta =
     activeImage
         |> Maybe.andThen
             (\image ->
-                Just { image | zoom = image.zoom |> Maybe.withDefault 1 |> boundedAdd delta |> Just }
+                Just { image | zoom = image.zoom |> Maybe.withDefault defaultZoom |> boundedAdd delta |> Just }
             )
 
 
