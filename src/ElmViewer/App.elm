@@ -177,6 +177,11 @@ defaultKeyboardMappings =
     }
 
 
+defaultSaveFilename : Filename
+defaultSaveFilename =
+    "imagerState.json"
+
+
 
 -- Model
 
@@ -371,7 +376,7 @@ type Msg
     | UpdateImage ImageKey (Maybe Image)
     | UpdateView ViewState
     | UpdatePreferences Preferences
-    | SaveCatalog
+    | SaveCatalog String
     | LoadCatalog
     | CatalogFileReceived File
     | CatalogDecoded (Result () ImageKey)
@@ -443,9 +448,9 @@ loadCatalog =
     Select.file [ "application/json" ] CatalogFileReceived
 
 
-saveCatalog : Data -> Preferences -> Cmd Msg
-saveCatalog data preferences =
-    Download.string "imagerState.json" "application/json" (encodeSaveData data preferences)
+saveCatalog : Data -> Preferences -> String -> Cmd Msg
+saveCatalog data preferences filename =
+    Download.string filename "application/json" (encodeSaveData data preferences)
 
 
 getImageDimensions filename =
@@ -520,10 +525,10 @@ update msg model =
                 Model viewport data preferences _ ->
                     ( Model viewport data preferences newState, Cmd.none )
 
-        SaveCatalog ->
+        SaveCatalog filename ->
             case model of
                 Model _ data preferences _ ->
-                    ( model, saveCatalog data preferences )
+                    ( model, saveCatalog data preferences filename )
 
         LoadCatalog ->
             case model of
@@ -1215,7 +1220,7 @@ imageHeader model =
                     |> Element.text
                     |> Element.el
                         [ centerX
-                        , onClick SaveCatalog
+                        , onClick (SaveCatalog defaultSaveFilename)
                         , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
                         ]
                     |> Element.el [ Font.color fontColor, centerX, width fill ]
@@ -1264,7 +1269,7 @@ imageHeader model =
                 , "Save"
                     |> Element.text
                     |> Element.el
-                        [ onClick SaveCatalog
+                        [ onClick (SaveCatalog defaultSaveFilename)
                         , centerX
                         , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
                         ]
