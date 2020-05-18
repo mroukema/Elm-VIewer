@@ -384,8 +384,8 @@ type Msg
     | CatalogFileReceived File
     | CatalogDecoded (Result () ImageKey)
     | ViewportChange Dom.Viewport
-    | GetImageDimensions Filename
-    | ImageDimensions Filename (Result Dom.Error Dom.Element)
+    | GetImageDimensions ImageKey
+    | ImageDimensions ImageKey (Result Dom.Error Dom.Element)
     | UpdateSaveName Filename
 
 
@@ -884,17 +884,27 @@ subscriptions model =
 preferencesEncoder : Preferences -> Encode.Value
 preferencesEncoder preferences =
     let
-        { slideshowSpeed, previewItemsPerRow, backgroundColor, keyboardControls, defaultRotation, defaultZoom } =
+        { slideshowSpeed, previewItemsPerRow, saveFilename } =
             preferences
+
+        { backgroundColor, keyboardControls, defaultRotation, defaultZoom } =
+            preferences
+
+        saveFilenameEntry =
+            saveFilename
+                |> Maybe.andThen (\filename -> [ ( "saveFilename", filename |> Encode.string ) ] |> Just)
+                |> Maybe.withDefault []
     in
     Encode.object
-        [ ( "slideshowSpeed", slideshowSpeed |> Encode.float )
-        , ( "previewItemsPerRow", previewItemsPerRow |> Encode.int )
-        , ( "backgroundColor", backgroundColor |> Color.toHex |> Encode.string )
-        , ( "keyboardControls", keyboardControls |> keyboardControlsEncoder )
-        , ( "defaultRotation", defaultRotation |> Encode.float )
-        , ( "defaultZoom", defaultZoom |> Encode.float )
-        ]
+        (List.append saveFilenameEntry
+            [ ( "slideshowSpeed", slideshowSpeed |> Encode.float )
+            , ( "previewItemsPerRow", previewItemsPerRow |> Encode.int )
+            , ( "backgroundColor", backgroundColor |> Color.toHex |> Encode.string )
+            , ( "keyboardControls", keyboardControls |> keyboardControlsEncoder )
+            , ( "defaultRotation", defaultRotation |> Encode.float )
+            , ( "defaultZoom", defaultZoom |> Encode.float )
+            ]
+        )
 
 
 preferencesDecoder : Json.Decoder Preferences
