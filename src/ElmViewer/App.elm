@@ -101,10 +101,14 @@ defaultPreferences =
 
 defaultBackground : Color
 defaultBackground =
+    let
+        defaultBackgroundIndex =
+            1
+    in
     case colorPalette of
         ( head, tail ) ->
             tail
-                |> List.getAt 1
+                |> List.getAt defaultBackgroundIndex
                 |> Maybe.withDefault head
 
 
@@ -130,6 +134,10 @@ zoomGranularity =
 rotationGranularity : Float
 rotationGranularity =
     1 / 72
+
+
+sizeCheckIdPrefix =
+    "sizeCheckPrefix"
 
 
 previewCatalogState : ViewState
@@ -445,10 +453,6 @@ getImageDimensions filename =
         (Dom.getElement (sizeCheckIdPrefix ++ filename))
 
 
-sizeCheckIdPrefix =
-    "sizeCheckPrefix"
-
-
 
 -- Update
 
@@ -603,14 +607,20 @@ encodeImage image_ =
 encodeSaveData : Data -> Preferences -> String
 encodeSaveData data preferences =
     let
+        version =
+            1
+
+        indentLevel =
+            2
+
         catalogRecord =
-            [ ( "version", 1 |> Encode.int )
+            [ ( "version", version |> Encode.int )
             , ( "data", data |> Encode.dict identity encodeImage )
             , ( "preferences", preferences |> preferencesEncoder )
             ]
     in
     Encode.object catalogRecord
-        |> Encode.encode 2
+        |> Encode.encode indentLevel
 
 
 setStartingSlide : ImageKey -> List ImageKey -> List ImageKey
@@ -624,10 +634,6 @@ setStartingSlide imageKey slides =
 openSlideshowWith : ImageKey -> (List ImageKey -> ViewState)
 openSlideshowWith startingImage =
     setStartingSlide startingImage >> SlideshowState False >> Slideshow
-
-
-
--- Subscriptions
 
 
 updateImageRotation : Data -> Float -> ImageKey -> Float -> Maybe Image
@@ -663,6 +669,10 @@ updateImageRotation data defaultRotation imageKey delta =
                                     image.rotation |> Maybe.withDefault defaultRotation |> boundedAdd delta |> Just
                             }
             )
+
+
+
+-- Subscriptions
 
 
 updateImageZoom : Data -> Float -> ImageKey -> Float -> Maybe Image
@@ -849,12 +859,12 @@ preferencesDecoder : Json.Decoder Preferences
 preferencesDecoder =
     Json.map6
         Preferences
-        (Json.field "slideshowSpeed" Json.float)
-        (Json.field "previewItemsPerRow" Json.int)
-        (Json.field "backgroundColor" hexColorDecoder)
-        (Json.field "keyboardControls" keyboardControlsDecoder)
-        (fieldWithDefault "defaultRotation" 0 Json.float)
-        (fieldWithDefault "defaultZoom" 1 Json.float)
+        (fieldWithDefault "slideshowSpeed" defaultPreferences.slideshowSpeed Json.float)
+        (fieldWithDefault "previewItemsPerRow" defaultPreferences.previewItemsPerRow Json.int)
+        (fieldWithDefault "backgroundColor" defaultPreferences.backgroundColor hexColorDecoder)
+        (fieldWithDefault "keyboardControls" defaultPreferences.keyboardControls keyboardControlsDecoder)
+        (fieldWithDefault "defaultRotation" defaultPreferences.defaultRotation Json.float)
+        (fieldWithDefault "defaultZoom" defaultPreferences.defaultZoom Json.float)
 
 
 keyboardControlsEncoder : KeyboardMappings -> Encode.Value
