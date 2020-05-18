@@ -540,8 +540,33 @@ update msg model =
                         dataAndPreferences =
                             decodeSaveData viewport jsonString
                                 |> (Maybe.withDefault <| Model viewport data preferences)
+
+                        newModel =
+                            dataAndPreferences viewState
+
+                        ( _, dimensionlessImages ) =
+                            case newModel of
+                                Model _ newData _ _ ->
+                                    partitionReadyImages newData
                     in
-                    ( dataAndPreferences viewState, Cmd.none )
+                    ( newModel
+                    , dimensionlessImages
+                        |> List.map
+                            (Tuple.first
+                                >> GetImageDimensions
+                                >> Task.succeed
+                                >> Task.attempt
+                                    (\result ->
+                                        case result of
+                                            Ok imageMsg ->
+                                                imageMsg
+
+                                            _ ->
+                                                GetImageDimensions ""
+                                    )
+                            )
+                        |> Cmd.batch
+                    )
 
         CatalogDecoded (Err _) ->
             ( model, Cmd.none )
