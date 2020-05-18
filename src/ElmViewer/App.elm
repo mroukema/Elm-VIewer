@@ -96,6 +96,7 @@ defaultPreferences =
     , keyboardControls = defaultKeyboardMappings
     , defaultRotation = 0
     , defaultZoom = 1
+    , saveFilename = Nothing
     }
 
 
@@ -233,6 +234,7 @@ type ViewModel
         , viewport : Dom.Viewport
         , defaultRotation : Float
         , defaultZoom : Float
+        , saveFilename : Maybe String
         }
     | SlideshowView
         ReadyImage
@@ -318,6 +320,7 @@ type alias Preferences =
     , keyboardControls : KeyboardMappings
     , defaultRotation : Float
     , defaultZoom : Float
+    , saveFilename : Maybe String
     }
 
 
@@ -383,6 +386,7 @@ type Msg
     | ViewportChange Dom.Viewport
     | GetImageDimensions Filename
     | ImageDimensions Filename (Result Dom.Error Dom.Element)
+    | UpdateSaveName Filename
 
 
 updateSlideshow : SlideshowState -> Msg
@@ -591,6 +595,14 @@ update msg model =
 
                 _ ->
                     ( model, Cmd.none )
+
+        UpdateSaveName newFilename ->
+            case newFilename == "" of
+                True ->
+                    ( Model cViewport cImages { cPreferences | saveFilename = Nothing } cState, Cmd.none )
+
+                _ ->
+                    ( Model cViewport cImages { cPreferences | saveFilename = Just <| newFilename } cState, Cmd.none )
 
 
 updateImageDimensions : Data -> Filename -> { r | width : Float, height : Float } -> Data
@@ -887,7 +899,7 @@ preferencesEncoder preferences =
 
 preferencesDecoder : Json.Decoder Preferences
 preferencesDecoder =
-    Json.map6
+    Json.map7
         Preferences
         (fieldWithDefault "slideshowSpeed" defaultPreferences.slideshowSpeed Json.float)
         (fieldWithDefault "previewItemsPerRow" defaultPreferences.previewItemsPerRow Json.int)
@@ -895,6 +907,7 @@ preferencesDecoder =
         (fieldWithDefault "keyboardControls" defaultPreferences.keyboardControls keyboardControlsDecoder)
         (fieldWithDefault "defaultRotation" defaultPreferences.defaultRotation Json.float)
         (fieldWithDefault "defaultZoom" defaultPreferences.defaultZoom Json.float)
+        (Json.maybe (Json.field "saveFilename" Json.string))
 
 
 keyboardControlsEncoder : KeyboardMappings -> Encode.Value
@@ -1036,6 +1049,7 @@ viewSelector model =
                         , viewport = viewport
                         , defaultRotation = preferences.defaultRotation
                         , defaultZoom = preferences.defaultZoom
+                        , saveFilename = preferences.saveFilename
                         }
 
                 Preview (Focused ( imageKey, imageList )) ->
@@ -1055,6 +1069,7 @@ viewSelector model =
                         , viewport = viewport
                         , defaultRotation = preferences.defaultRotation
                         , defaultZoom = preferences.defaultZoom
+                        , saveFilename = preferences.saveFilename
                         }
 
                 Slideshow { running, slidelist } ->
@@ -1069,6 +1084,7 @@ viewSelector model =
                                 , viewport = viewport
                                 , defaultRotation = preferences.defaultRotation
                                 , defaultZoom = preferences.defaultZoom
+                                , saveFilename = preferences.saveFilename
                                 }
 
                         firstImage :: images ->
@@ -1188,7 +1204,7 @@ imageHeader model =
                         |> Maybe.withDefault (head |> rgbPaletteColor)
     in
     case model of
-        SettingsView _ ->
+        SettingsView { saveFilename } ->
             Element.row
                 [ Background.color <| headerBackground
                 , Element.spaceEvenly
@@ -1216,14 +1232,22 @@ imageHeader model =
                         , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
                         ]
                     |> Element.el [ Font.color fontColor, centerX, width fill ]
-                , "Save"
-                    |> Element.text
-                    |> Element.el
-                        [ centerX
-                        , onClick (SaveCatalog defaultSaveFilename)
-                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                        ]
-                    |> Element.el [ Font.color fontColor, centerX, width fill ]
+                , Element.row [ centerX, width fill ]
+                    [ "Save"
+                        |> Element.text
+                        |> Element.el
+                            [ centerX
+                            , onClick (SaveCatalog (saveFilename |> Maybe.withDefault defaultSaveFilename))
+                            , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                            ]
+                        |> Element.el [ Font.color fontColor, centerX, width fill ]
+                    , Input.text [ width fill, height fill ]
+                        { onChange = UpdateSaveName
+                        , text = saveFilename |> Maybe.withDefault ""
+                        , placeholder = Just <| Input.placeholder [] (text defaultSaveFilename)
+                        , label = Input.labelHidden "Filename"
+                        }
+                    ]
                 , "Load"
                     |> Element.text
                     |> Element.el
@@ -1234,7 +1258,7 @@ imageHeader model =
                     |> Element.el [ Font.color fontColor, centerX, width fill ]
                 ]
 
-        PreviewView imageUrls _ _ ->
+        PreviewView imageUrls _ { saveFilename } ->
             Element.row
                 [ width fill
                 , height (50 |> px)
@@ -1266,14 +1290,22 @@ imageHeader model =
                         , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
                         ]
                     |> Element.el [ Font.color fontColor, width fill, centerX ]
-                , "Save"
-                    |> Element.text
-                    |> Element.el
-                        [ onClick (SaveCatalog defaultSaveFilename)
-                        , centerX
-                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                        ]
-                    |> Element.el [ Font.color fontColor, width fill, centerX ]
+                , Element.row [ centerX, width fill ]
+                    [ "Save"
+                        |> Element.text
+                        |> Element.el
+                            [ centerX
+                            , onClick (SaveCatalog (saveFilename |> Maybe.withDefault defaultSaveFilename))
+                            , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                            ]
+                        |> Element.el [ Font.color fontColor, centerX, width fill ]
+                    , Input.text [ width fill, height fill ]
+                        { onChange = UpdateSaveName
+                        , text = saveFilename |> Maybe.withDefault ""
+                        , placeholder = Just <| Input.placeholder [] (text defaultSaveFilename)
+                        , label = Input.labelHidden "Filename"
+                        }
+                    ]
                 , "Load"
                     |> Element.text
                     |> Element.el
