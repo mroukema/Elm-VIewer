@@ -387,6 +387,7 @@ type Msg
     | GetImageDimensions ImageKey
     | ImageDimensions ImageKey (Result Dom.Error Dom.Element)
     | UpdateSaveName Filename
+    | GetViewport
 
 
 updateSlideshow : SlideshowState -> Msg
@@ -480,7 +481,7 @@ update msg model =
     in
     case msg of
         ViewportChange viewport ->
-            ( model, Cmd.none )
+            ( Model viewport cImages cPreferences cState, Cmd.none )
 
         OpenImagePicker ->
             ( model, Select.files [ "image/png", "image/jpg" ] FilesReceived )
@@ -603,6 +604,9 @@ update msg model =
 
                 _ ->
                     ( Model cViewport cImages { cPreferences | saveFilename = Just <| newFilename } cState, Cmd.none )
+
+        GetViewport ->
+            ( model, Task.perform ViewportChange Dom.getViewport )
 
 
 updateImageDimensions : Data -> Filename -> { r | width : Float, height : Float } -> Data
@@ -752,6 +756,10 @@ updateImageZoom data defaultZoom imageKey delta =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
+    let
+        viewportResizeListener =
+            Browser.onResize (\_ _ -> GetViewport)
+    in
     case model of
         Model _ data { slideshowSpeed, keyboardControls, defaultRotation, defaultZoom } state ->
             case state of
@@ -821,60 +829,78 @@ subscriptions model =
                                     (Time.every slideshowSpeed
                                         (always <| stepSlideshow currentState Forward)
                                     )
+                                |> (::) viewportResizeListener
                                 |> Sub.batch
 
                         False ->
                             navigationListeners
+                                |> (::) viewportResizeListener
                                 |> Sub.batch
 
                 Preview (Focused (( imageKey, imageList ) as tupleList)) ->
                     let
                         controlKeys =
                             keyboardControls.previewMap
+
+                        keyPressListeners =
+                            [ Browser.onKeyPress <|
+                                msgWhenKeyOf controlKeys.startSlideshow
+                                    (always <|
+                                        UpdateView (openSlideshowWith imageKey <| List.sort <| Dict.keys data)
+                                    )
+                            , Browser.onKeyUp <|
+                                msgWhenKeyOf controlKeys.closeCurrent
+                                    (always <| UpdateView <| Preview (Catalog Nothing))
+                            , Browser.onKeyUp <|
+                                msgWhenKeyOf controlKeys.openCurrent
+                                    (always <|
+                                        UpdateView (openSlideshowWith imageKey <| List.sort <| Dict.keys data)
+                                    )
+                            , Browser.onKeyUp <|
+                                msgWhenKeyOf [ "ArrowRight" ]
+                                    (always <|
+                                        UpdateView (Preview (Focused (tupleList |> stepTupleList Forward)))
+                                    )
+                            , Browser.onKeyUp <|
+                                msgWhenKeyOf [ "ArrowLeft" ]
+                                    (always <|
+                                        UpdateView (Preview (Focused (tupleList |> stepTupleList Backward)))
+                                    )
+                            ]
                     in
-                    Sub.batch
-                        [ Browser.onKeyPress <|
-                            msgWhenKeyOf controlKeys.startSlideshow
-                                (always <|
-                                    UpdateView (openSlideshowWith imageKey <| List.sort <| Dict.keys data)
-                                )
-                        , Browser.onKeyUp <|
-                            msgWhenKeyOf controlKeys.closeCurrent
-                                (always <| UpdateView <| Preview (Catalog Nothing))
-                        , Browser.onKeyUp <|
-                            msgWhenKeyOf controlKeys.openCurrent
-                                (always <|
-                                    UpdateView (openSlideshowWith imageKey <| List.sort <| Dict.keys data)
-                                )
-                        , Browser.onKeyUp <|
-                            msgWhenKeyOf [ "ArrowRight" ]
-                                (always <|
-                                    UpdateView (Preview (Focused (tupleList |> stepTupleList Forward)))
-                                )
-                        , Browser.onKeyUp <|
-                            msgWhenKeyOf [ "ArrowLeft" ]
-                                (always <|
-                                    UpdateView (Preview (Focused (tupleList |> stepTupleList Backward)))
-                                )
-                        ]
+                    keyPressListeners
+                        |> (::) viewportResizeListener
+                        |> Sub.batch
 
                 Preview (Catalog imageList) ->
                     let
                         controls =
                             keyboardControls.previewMap
+
+                        keyPressListeners =
+                            [ Browser.onKeyPress <|
+                                msgWhenKeyOf controls.startSlideshow
+                                    (always <| startSlideshow <| List.sort <| Dict.keys data)
+                            ]
                     in
-                    Browser.onKeyPress <|
-                        msgWhenKeyOf controls.startSlideshow
-                            (always <| startSlideshow <| List.sort <| Dict.keys data)
+                    keyPressListeners
+                        |> (::) viewportResizeListener
+                        |> Sub.batch
 
                 Settings ->
                     let
                         controls =
                             keyboardControls.preferencesMap
+
+                        keyPressListeners =
+                            [ Browser.onKeyUp <|
+                                msgWhenKeyOf controls.exit
+                                    (always <| UpdateView previewCatalogState)
+                            ]
                     in
-                    Browser.onKeyUp <|
-                        msgWhenKeyOf controls.exit
-                            (always <| UpdateView previewCatalogState)
+                    keyPressListeners
+                        |> (::) viewportResizeListener
+                        |> Sub.batch
 
 
 
