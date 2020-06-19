@@ -247,6 +247,13 @@ type ViewModel
         }
     | SettingsView Preferences
     | InfinityView
+        { images : List ( ImageKey, ReadyImage )
+        , backgroundColor : Element.Color
+        , dimensionlessImages : List ( ImageKey, LoadingImage )
+        , viewport : Dom.Viewport
+        , defaultRotation : Float
+        , defaultZoom : Float
+        }
 
 
 {-| ViewState
@@ -1144,6 +1151,13 @@ viewSelector model =
 
                 Infinity _ ->
                     InfinityView
+                        { backgroundColor = backgroundColor
+                        , defaultRotation = preferences.defaultRotation
+                        , defaultZoom = preferences.defaultZoom
+                        , dimensionlessImages = processingImages
+                        , images = readyImages
+                        , viewport = viewport
+                        }
 
 
 partitionReadyImages : Data -> ( List ( Filename, ReadyImage ), List ( Filename, LoadingImage ) )
@@ -1183,7 +1197,7 @@ renderView model =
                 SettingsView _ ->
                     []
 
-                InfinityView ->
+                InfinityView _ ->
                     []
 
         content =
@@ -1210,7 +1224,7 @@ renderView model =
                         , editPreferencesView preferences
                         ]
 
-                InfinityView ->
+                InfinityView _ ->
                     Element.none
     in
     content
