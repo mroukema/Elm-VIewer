@@ -246,6 +246,7 @@ type ViewModel
         , dimensionlessImages : List ( ImageKey, LoadingImage )
         }
     | SettingsView Preferences
+    | InfinityView
 
 
 {-| ViewState
@@ -256,6 +257,7 @@ type ViewState
     = Slideshow SlideshowState
     | Preview PreviewState
     | Settings
+    | Infinity InfinityState
 
 
 {-| SlideshowState
@@ -273,6 +275,10 @@ type alias SlideshowState =
 type PreviewState
     = Catalog (Maybe (List ImageKey))
     | Focused ( FocusedImage, List ImageKey )
+
+
+type InfinityState
+    = None
 
 
 type alias FocusedImage =
@@ -902,6 +908,9 @@ subscriptions model =
                         |> (::) viewportResizeListener
                         |> Sub.batch
 
+                Infinity _ ->
+                    Sub.none
+
 
 
 -- Encodings
@@ -1133,6 +1142,9 @@ viewSelector model =
                                 , dimensionlessImages = processingImages
                                 }
 
+                Infinity _ ->
+                    InfinityView
+
 
 partitionReadyImages : Data -> ( List ( Filename, ReadyImage ), List ( Filename, LoadingImage ) )
 partitionReadyImages data =
@@ -1171,6 +1183,9 @@ renderView model =
                 SettingsView _ ->
                     []
 
+                InfinityView ->
+                    []
+
         content =
             case model of
                 PreviewView images _ preferences ->
@@ -1194,6 +1209,9 @@ renderView model =
                         [ imageHeader model
                         , editPreferencesView preferences
                         ]
+
+                InfinityView ->
+                    Element.none
     in
     content
         |> Element.layout
