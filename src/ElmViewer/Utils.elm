@@ -3,7 +3,6 @@ module ElmViewer.Utils exposing
     , flip
     , getFromDict
     , getRotatedDimensions
-    , msgKeyWhen
     , msgWhenKeyOf
     , rgbPaletteColor
     , seconds
@@ -36,6 +35,7 @@ getFromDict dict key =
     Dict.get key dict
 
 
+seconds : Float -> Float
 seconds =
     (*) 1000
 
@@ -91,27 +91,13 @@ rgbFromTuple ( r, g, b ) =
     Element.rgb (r / 255) (g / 255) (b / 255)
 
 
+rgbPaletteColor : PaletteColor.Color -> Element.Color
 rgbPaletteColor =
     PaletteColor.toRGB >> rgbFromTuple
 
 
 
 -- Decoders
-
-
-msgKeyWhen conditions msg =
-    Json.map msg
-        (Json.field "key" Json.string
-            |> Json.andThen
-                (\key ->
-                    case List.all (\condition -> condition key) conditions of
-                        True ->
-                            Json.succeed key
-
-                        False ->
-                            Json.fail key
-                )
-        )
 
 
 msgWhenKeyOf : List String -> (String -> msg) -> Json.Decoder msg
