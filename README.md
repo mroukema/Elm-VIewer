@@ -47,8 +47,12 @@ Runs in browser tab so it can be casted in background. Displays images from loca
 - Arrow Down : Return to Preview Catalog View
 - Space : Pause/Unpause Slideshow
 - Escape : Return to preview view
+- +/- (=/_) : Increase/decrease zoom level for current image
+- \/| : Rotate current image clockwise/counter clockwise
 
 ### Preview View
+- " " : Start slideshow view
+- i : Start infinity scroll view
 
 #### Catalog View
 - Space : Start slideshow
@@ -58,6 +62,8 @@ Runs in browser tab so it can be casted in background. Displays images from loca
 - Arrow Down : Return to catalog view
 - Escape : Return to catalog view
 
-
 ### PreferencesView
 - Escape : Return to preview view
+
+### Infinity Scroll Mode
+- Escape/x : Return to preview view
