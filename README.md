@@ -48,7 +48,7 @@ Runs in browser tab so it can be casted in background. Displays images from loca
 - Space : Pause/Unpause Slideshow
 - Escape : Return to preview view
 - +/- (=/_) : Increase/decrease zoom level for current image
-- \/| : Rotate current image clockwise/counter clockwise
+- \\/| : Rotate current image clockwise/counter clockwise
 
 ### Preview View
 - " " : Start slideshow view
