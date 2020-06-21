@@ -97,6 +97,7 @@ defaultPreferences =
     , defaultRotation = 0
     , defaultZoom = 1
     , saveFilename = Nothing
+    , infinityScroll = Vertical
     }
 
 
@@ -154,7 +155,7 @@ defaultSlideshowMap =
     , rotateP = [ "|" ]
     , rotateM = [ "\\" ]
     , zoomP = [ "+", "=" ]
-    , zoomM = [ "-" ]
+    , zoomM = [ "-", "_" ]
     }
 
 
@@ -167,6 +168,12 @@ defaultPreviewMap =
     { openCurrent = [ "ArrowUp" ]
     , closeCurrent = [ "ArrowDown", "Escape" ]
     , startSlideshow = [ " " ]
+    , startInfinityMode = [ "i" ]
+    }
+
+
+defaultInfinityMap =
+    { closeInfinity = [ "x", "Escape" ]
     }
 
 
@@ -175,6 +182,7 @@ defaultKeyboardMappings =
     { slideshowMap = defaultSlideshowMap
     , preferencesMap = defaultPreferencesMap
     , previewMap = defaultPreviewMap
+    , infinityMap = defaultInfinityMap
     }
 
 
@@ -251,8 +259,9 @@ type ViewModel
         , backgroundColor : Element.Color
         , dimensionlessImages : List ( ImageKey, LoadingImage )
         , viewport : Dom.Viewport
-        , defaultRotation : Float
         , defaultZoom : Float
+        , defaultRotation : Float
+        , scroll : InfinityScroll
         }
 
 
@@ -284,8 +293,14 @@ type PreviewState
     | Focused ( FocusedImage, List ImageKey )
 
 
-type InfinityState
-    = None
+type InfinityScroll
+    = Vertical
+    | Horizontal
+
+
+type alias InfinityState =
+    { scroll : InfinityScroll
+    }
 
 
 type alias FocusedImage =
@@ -334,6 +349,7 @@ type alias Preferences =
     , defaultRotation : Float
     , defaultZoom : Float
     , saveFilename : Maybe String
+    , infinityScroll : InfinityScroll
     }
 
 
@@ -349,6 +365,7 @@ type alias KeyboardMappings =
     { slideshowMap : SlideshowMap
     , preferencesMap : PreferencesMap
     , previewMap : PreviewMap
+    , infinityMap : InfinityMap
     }
 
 
@@ -373,6 +390,12 @@ type alias PreviewMap =
     { openCurrent : List String
     , closeCurrent : List String
     , startSlideshow : List String
+    , startInfinityMode : List String
+    }
+
+
+type alias InfinityMap =
+    { closeInfinity : List String
     }
 
 
@@ -411,6 +434,11 @@ updateSlideshow state =
 startSlideshow : List ImageKey -> Msg
 startSlideshow slides =
     updateSlideshow { running = True, slidelist = slides }
+
+
+startInfinityMode : InfinityScroll -> List ImageKey -> Msg
+startInfinityMode scroll slides =
+    UpdateView <| Infinity (InfinityState scroll)
 
 
 togglePauseSlideshow : SlideshowState -> Msg
@@ -774,7 +802,7 @@ subscriptions model =
             Browser.onResize (\_ _ -> GetViewport)
     in
     case model of
-        Model _ data { slideshowSpeed, keyboardControls, defaultRotation, defaultZoom } state ->
+        Model _ data { slideshowSpeed, keyboardControls, defaultRotation, defaultZoom, infinityScroll } state ->
             case state of
                 Slideshow currentState ->
                     let
@@ -894,6 +922,13 @@ subscriptions model =
                             [ Browser.onKeyPress <|
                                 msgWhenKeyOf controls.startSlideshow
                                     (always <| startSlideshow <| List.sort <| Dict.keys data)
+                            , Browser.onKeyPress <|
+                                msgWhenKeyOf controls.startInfinityMode
+                                    (always <|
+                                        startInfinityMode infinityScroll <|
+                                            List.sort <|
+                                                Dict.keys data
+                                    )
                             ]
                     in
                     keyPressListeners
@@ -916,7 +951,19 @@ subscriptions model =
                         |> Sub.batch
 
                 Infinity _ ->
-                    Sub.none
+                    let
+                        controls =
+                            keyboardControls.infinityMap
+
+                        keyPressListeners =
+                            [ Browser.onKeyUp <|
+                                msgWhenKeyOf controls.closeInfinity
+                                    (always <| UpdateView (Preview (Catalog Nothing)))
+                            ]
+                    in
+                    keyPressListeners
+                        |> (::) viewportResizeListener
+                        |> Sub.batch
 
 
 
@@ -926,7 +973,7 @@ subscriptions model =
 preferencesEncoder : Preferences -> Encode.Value
 preferencesEncoder preferences =
     let
-        { slideshowSpeed, previewItemsPerRow, saveFilename } =
+        { slideshowSpeed, previewItemsPerRow, saveFilename, infinityScroll } =
             preferences
 
         { backgroundColor, keyboardControls, defaultRotation, defaultZoom } =
@@ -945,13 +992,23 @@ preferencesEncoder preferences =
             , ( "keyboardControls", keyboardControls |> keyboardControlsEncoder )
             , ( "defaultRotation", defaultRotation |> Encode.float )
             , ( "defaultZoom", defaultZoom |> Encode.float )
+            , ( "infinityState", infinityScroll |> encodeInfinityState )
             ]
         )
 
 
+encodeInfinityState state =
+    case state of
+        Vertical ->
+            "vertical" |> Encode.string
+
+        Horizontal ->
+            "horizontal" |> Encode.string
+
+
 preferencesDecoder : Json.Decoder Preferences
 preferencesDecoder =
-    Json.map7
+    Json.map8
         Preferences
         (fieldWithDefault "slideshowSpeed" defaultPreferences.slideshowSpeed Json.float)
         (fieldWithDefault "previewItemsPerRow" defaultPreferences.previewItemsPerRow Json.int)
@@ -960,10 +1017,30 @@ preferencesDecoder =
         (fieldWithDefault "defaultRotation" defaultPreferences.defaultRotation Json.float)
         (fieldWithDefault "defaultZoom" defaultPreferences.defaultZoom Json.float)
         (Json.maybe (Json.field "saveFilename" Json.string))
+        (fieldWithDefault "infinityScroll"
+            defaultPreferences.infinityScroll
+            decodeInfinityScroll
+        )
+
+
+decodeInfinityScroll =
+    Json.string
+        |> Json.andThen
+            (\value ->
+                case value of
+                    "vertical" ->
+                        Json.succeed Vertical
+
+                    "horizontal" ->
+                        Json.succeed Horizontal
+
+                    _ ->
+                        Json.fail "invalid value for infinityState"
+            )
 
 
 keyboardControlsEncoder : KeyboardMappings -> Encode.Value
-keyboardControlsEncoder { slideshowMap, preferencesMap, previewMap } =
+keyboardControlsEncoder { slideshowMap, preferencesMap, previewMap, infinityMap } =
     Encode.object
         [ ( "slideshowMap"
           , Encode.object
@@ -987,6 +1064,12 @@ keyboardControlsEncoder { slideshowMap, preferencesMap, previewMap } =
                 [ ( "startSlideshow", Encode.list Encode.string previewMap.startSlideshow )
                 , ( "openCurrent", Encode.list Encode.string previewMap.openCurrent )
                 , ( "closeCurrent", Encode.list Encode.string previewMap.closeCurrent )
+                , ( "startInfinityMode", Encode.list Encode.string previewMap.startInfinityMode )
+                ]
+          )
+        , ( "infinityMap"
+          , Encode.object
+                [ ( "closeInfinity", Encode.list Encode.string infinityMap.closeInfinity )
                 ]
           )
         ]
@@ -1010,7 +1093,7 @@ fieldWithDefault fieldLabel default decoder =
 
 keyboardControlsDecoder : Json.Decoder KeyboardMappings
 keyboardControlsDecoder =
-    Json.map3
+    Json.map4
         KeyboardMappings
         (Json.field "slideshowMap"
             (Json.map8 SlideshowMap
@@ -1031,10 +1114,16 @@ keyboardControlsDecoder =
             )
         )
         (Json.field "previewMap"
-            (Json.map3 PreviewMap
+            (Json.map4 PreviewMap
                 (fieldWithDefault "openCurrent" defaultPreviewMap.openCurrent (Json.list Json.string))
                 (fieldWithDefault "closeCurrent" defaultPreviewMap.closeCurrent (Json.list Json.string))
                 (fieldWithDefault "startSlideshow" defaultPreviewMap.startSlideshow (Json.list Json.string))
+                (fieldWithDefault "startInfinityMode" defaultPreviewMap.startInfinityMode (Json.list Json.string))
+            )
+        )
+        (Json.field "infinityMap"
+            (Json.map InfinityMap
+                (fieldWithDefault "closeInfinity" defaultInfinityMap.closeInfinity (Json.list Json.string))
             )
         )
 
@@ -1149,14 +1238,15 @@ viewSelector model =
                                 , dimensionlessImages = processingImages
                                 }
 
-                Infinity _ ->
+                Infinity { scroll } ->
                     InfinityView
                         { backgroundColor = backgroundColor
-                        , defaultRotation = preferences.defaultRotation
-                        , defaultZoom = preferences.defaultZoom
+                        , defaultRotation = 0
+                        , defaultZoom = 1
                         , dimensionlessImages = processingImages
                         , images = readyImages
                         , viewport = viewport
+                        , scroll = scroll
                         }
 
 
@@ -1197,41 +1287,58 @@ renderView model =
                 SettingsView _ ->
                     []
 
-                InfinityView _ ->
-                    []
+                InfinityView { dimensionlessImages } ->
+                    dimensionlessImages
+
+        backgroundColor =
+            case model of
+                PreviewView _ _ preferences ->
+                    preferences.backgroundColor
+
+                SlideshowView _ preferences ->
+                    preferences.backgroundColor
+
+                SettingsView preferences ->
+                    preferences.backgroundColor |> rgbPaletteColor
+
+                InfinityView state ->
+                    state.backgroundColor
 
         content =
             case model of
                 PreviewView images _ preferences ->
                     Element.column
-                        [ width fill, height fill, Element.clipX, Background.color preferences.backgroundColor ]
+                        [ width fill, height fill, Element.clipX ]
                         [ imageHeader model
                         , filePreviewView images preferences
                         ]
 
-                SlideshowView currentImage ({ backgroundColor, width, height } as options) ->
+                SlideshowView currentImage ({ width, height } as options) ->
                     Element.el
-                        [ Element.width fill, Element.height fill, Background.color backgroundColor ]
+                        [ Element.width fill, Element.height fill ]
                         (slideshowViewElement currentImage
                             { width = width, height = height }
                             options
                         )
 
-                SettingsView ({ backgroundColor } as preferences) ->
+                SettingsView preferences ->
                     Element.column
-                        [ width fill, height fill, Background.color (backgroundColor |> rgbPaletteColor) ]
+                        [ width fill, height fill ]
                         [ imageHeader model
                         , editPreferencesView preferences
                         ]
 
-                InfinityView _ ->
-                    Element.none
+                InfinityView state ->
+                    Element.column
+                        [ width fill
+                        , height fill
+                        ]
+                        [ infinityReadingView state ]
     in
     content
         |> Element.layout
-            [ height fill
-            , width fill
-            , inFront <| overlay
+            [ inFront <| overlay
+            , Background.color backgroundColor
             , Element.onRight (dimensionGetter getDimensionList)
             ]
 
@@ -1420,7 +1527,7 @@ editPreferencesView preferences =
         { slideshowSpeed, backgroundColor, previewItemsPerRow } =
             preferences
 
-        { keyboardControls, defaultRotation, defaultZoom } =
+        { keyboardControls, defaultRotation, defaultZoom, infinityScroll } =
             preferences
     in
     Element.el
@@ -1559,6 +1666,33 @@ editPreferencesView preferences =
                 , value = defaultZoom
                 , thumb = Input.defaultThumb
                 , step = Just zoomGranularity
+                }
+            , Input.radio
+                [ Font.color <| rgba255 250 250 250 1.0, width <| Element.fillPortion 4 ]
+                { onChange = \scroll -> UpdatePreferences { preferences | infinityScroll = scroll }
+                , options =
+                    [ Input.optionWith Vertical
+                        (\optionState ->
+                            Element.row [ Element.spacing 12 ]
+                                [ Element.el [ Element.alignRight ] <|
+                                    Input.defaultCheckbox (optionState == Input.Selected)
+                                , Element.el [ Element.alignLeft ] <| text "Vertical"
+                                ]
+                        )
+                    , Input.optionWith Horizontal
+                        (\optionState ->
+                            Element.row [ Element.spacing 12 ]
+                                [ Element.el [ Element.alignRight ] <|
+                                    Input.defaultCheckbox (optionState == Input.Selected)
+                                , Element.el [ Element.alignLeft ] <| text "Horizontal"
+                                ]
+                        )
+                    ]
+                , selected = Just infinityScroll
+                , label =
+                    Input.labelLeft
+                        [ Font.color <| rgba255 250 250 250 1.0, width <| Element.fillPortion 1 ]
+                        (Element.text "Infinity Mode Scroll Direction")
                 }
 
             -- , Element.row [ width fill, height Element.fill ]
@@ -1851,6 +1985,11 @@ slideshowViewElement =
     viewportBoundImage
 
 
+{-| Image within a container of specific dimensions taken from provided viewport
+Rotation will resize to keep image in bounds while maximizing size
+Zoom relative to the viewport size. Enlarging will cause image to overflow bounds and
+shrinking will introduce spacing within the boarders of viewport
+-}
 viewportBoundImage :
     ReadyImage
     -> { viewport | width : Float, height : Float }
@@ -1895,3 +2034,39 @@ viewportBoundImage image viewport { defaultRotation, defaultZoom } =
         ]
         { src = image.imageUrl, description = "Current Slide Image" }
         |> Element.el [ width fill, height fill ]
+
+
+infinityReadingView :
+    { state
+        | images : List ( ImageKey, ReadyImage )
+        , viewport : Dom.Viewport
+        , defaultRotation : Float
+        , defaultZoom : Float
+        , scroll : InfinityScroll
+    }
+    -> Element Msg
+infinityReadingView ({ images, viewport, scroll } as options) =
+    let
+        imageList =
+            images
+                |> List.sortBy Tuple.first
+                |> List.map Tuple.second
+
+        viewport_ =
+            viewport.viewport
+
+        commonContainerAttr =
+            [ Element.spacing 1 ]
+
+        container =
+            case scroll of
+                Vertical ->
+                    Element.column (centerX :: commonContainerAttr)
+
+                Horizontal ->
+                    Element.row (centerY :: commonContainerAttr)
+    in
+    container
+        (imageList
+            |> List.map (\image -> viewportBoundImage image viewport_ options)
+        )
