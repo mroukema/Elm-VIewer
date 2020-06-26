@@ -424,6 +424,7 @@ type Msg
     | ImageDimensions ImageKey (Result Dom.Error Dom.Element)
     | UpdateSaveName Filename
     | GetViewport
+    | NoOp
 
 
 updateSlideshow : SlideshowState -> Msg
@@ -504,6 +505,13 @@ getImageDimensions filename =
         (Dom.getElement (sizeCheckIdPrefix ++ filename))
 
 
+scrollToElement : ImageKey -> Cmd Msg
+scrollToElement imageKey =
+    Dom.getElement imageKey
+        |> Task.andThen (\{ element } -> Dom.setViewport element.x element.y)
+        |> Task.attempt (always NoOp)
+
+
 
 -- Update
 
@@ -554,7 +562,11 @@ update msg model =
         UpdateImage imageKey maybeImage ->
             case maybeImage of
                 Just newImage ->
-                    ( Model cViewport (Dict.update imageKey (always (Just newImage)) cImages) cPreferences cState
+                    ( Model
+                        cViewport
+                        (Dict.update imageKey (always (Just newImage)) cImages)
+                        cPreferences
+                        cState
                     , Cmd.none
                     )
 
@@ -567,9 +579,24 @@ update msg model =
                     ( Model viewport data preferences state, Cmd.none )
 
         UpdateView newState ->
-            case model of
-                Model viewport data preferences _ ->
-                    ( Model viewport data preferences newState, Cmd.none )
+            let
+                newModel =
+                    Model cViewport cImages cPreferences newState
+            in
+            case cState of
+                Preview (Focused ( imageKey, _ )) ->
+                    ( newModel, scrollToElement imageKey )
+
+                Slideshow { slidelist } ->
+                    case slidelist of
+                        [] ->
+                            ( newModel, Cmd.none )
+
+                        imageKey :: _ ->
+                            ( newModel, scrollToElement imageKey )
+
+                _ ->
+                    ( newModel, Cmd.none )
 
         SaveCatalog filename ->
             case model of
@@ -644,10 +671,19 @@ update msg model =
                     ( Model cViewport cImages { cPreferences | saveFilename = Nothing } cState, Cmd.none )
 
                 _ ->
-                    ( Model cViewport cImages { cPreferences | saveFilename = Just <| newFilename } cState, Cmd.none )
+                    ( Model
+                        cViewport
+                        cImages
+                        { cPreferences | saveFilename = Just <| newFilename }
+                        cState
+                    , Cmd.none
+                    )
 
         GetViewport ->
             ( model, Task.perform ViewportChange Dom.getViewport )
+
+        NoOp ->
+            ( model, Cmd.none )
 
 
 updateImageDimensions : Data -> Filename -> { r | width : Float, height : Float } -> Data
@@ -656,10 +692,16 @@ updateImageDimensions data filename { width, height } =
         (\value ->
             case value of
                 Just (Processing image) ->
-                    Just (Ready <| ReadyImage image.imageUrl { width = width, height = height } Nothing Nothing)
+                    Just
+                        (Ready <|
+                            ReadyImage image.imageUrl { width = width, height = height } Nothing Nothing
+                        )
 
                 Just (Ready image) ->
-                    Just (Ready <| ReadyImage image.imageUrl { width = width, height = height } Nothing Nothing)
+                    Just
+                        (Ready <|
+                            ReadyImage image.imageUrl { width = width, height = height } Nothing Nothing
+                        )
 
                 Nothing ->
                     Nothing
@@ -746,14 +788,20 @@ updateImageRotation data defaultRotation imageKey delta =
                         (Just << Processing)
                             { image
                                 | rotation =
-                                    image.rotation |> Maybe.withDefault defaultRotation |> boundedAdd delta |> Just
+                                    image.rotation
+                                        |> Maybe.withDefault defaultRotation
+                                        |> boundedAdd delta
+                                        |> Just
                             }
 
                     Ready image ->
                         (Just << Ready)
                             { image
                                 | rotation =
-                                    image.rotation |> Maybe.withDefault defaultRotation |> boundedAdd delta |> Just
+                                    image.rotation
+                                        |> Maybe.withDefault defaultRotation
+                                        |> boundedAdd delta
+                                        |> Just
                             }
             )
 
@@ -784,13 +832,21 @@ updateImageZoom data defaultZoom imageKey delta =
                     Processing image ->
                         (Just << Processing)
                             { image
-                                | zoom = image.zoom |> Maybe.withDefault defaultZoom |> boundedAdd delta |> Just
+                                | zoom =
+                                    image.zoom
+                                        |> Maybe.withDefault defaultZoom
+                                        |> boundedAdd delta
+                                        |> Just
                             }
 
                     Ready image ->
                         (Just << Ready)
                             { image
-                                | zoom = image.zoom |> Maybe.withDefault defaultZoom |> boundedAdd delta |> Just
+                                | zoom =
+                                    image.zoom
+                                        |> Maybe.withDefault defaultZoom
+                                        |> boundedAdd delta
+                                        |> Just
                             }
             )
 
@@ -802,7 +858,11 @@ subscriptions model =
             Browser.onResize (\_ _ -> GetViewport)
     in
     case model of
-        Model _ data { slideshowSpeed, keyboardControls, defaultRotation, defaultZoom, infinityScroll } state ->
+        Model _ data preferences state ->
+            let
+                { slideshowSpeed, keyboardControls, defaultRotation, defaultZoom, infinityScroll } =
+                    preferences
+            in
             case state of
                 Slideshow currentState ->
                     let
@@ -1118,7 +1178,11 @@ keyboardControlsDecoder =
                 (fieldWithDefault "openCurrent" defaultPreviewMap.openCurrent (Json.list Json.string))
                 (fieldWithDefault "closeCurrent" defaultPreviewMap.closeCurrent (Json.list Json.string))
                 (fieldWithDefault "startSlideshow" defaultPreviewMap.startSlideshow (Json.list Json.string))
-                (fieldWithDefault "startInfinityMode" defaultPreviewMap.startInfinityMode (Json.list Json.string))
+                (fieldWithDefault
+                    "startInfinityMode"
+                    defaultPreviewMap.startInfinityMode
+                    (Json.list Json.string)
+                )
             )
         )
         (Json.field "infinityMap"
@@ -1271,7 +1335,7 @@ renderView model =
         overlay =
             case model of
                 PreviewView _ (Just ( imageKey, image )) ({ viewport } as options) ->
-                    expandedImage image viewport.viewport options
+                    expandedImage ( imageKey, image ) viewport.viewport options
 
                 _ ->
                     Element.none
@@ -1605,7 +1669,11 @@ editPreferencesView preferences =
                 [ Element.el [ width <| Element.fillPortion 1 ] <| Element.text "Background Color"
                 , Element.row
                     [ width <| Element.fillPortion 4, height (20 |> px) ]
-                    (colorPicker (\newColor -> UpdatePreferences { preferences | backgroundColor = newColor }))
+                    (colorPicker
+                        (\newColor ->
+                            UpdatePreferences { preferences | backgroundColor = newColor }
+                        )
+                    )
                 ]
             , Input.slider
                 [ width <| Element.fillPortion 4
@@ -1894,6 +1962,7 @@ previewImage otherSelected ( imageKey, { imageUrl } ) =
             , centerX
             , centerY
             , inFront <| previewImageControls orderedSelected imageKey
+            , elementId imageKey
             ]
             { src = imageUrl
             , description = ""
@@ -1902,11 +1971,11 @@ previewImage otherSelected ( imageKey, { imageUrl } ) =
 
 
 expandedImage :
-    ReadyImage
+    ( ImageKey, ReadyImage )
     -> { viewport | height : Float, width : Float }
     -> { options | defaultRotation : Float, defaultZoom : Float }
     -> Element Msg
-expandedImage image viewport options =
+expandedImage ( imageKey, image ) viewport options =
     let
         imageUrl =
             .imageUrl image
@@ -1922,6 +1991,7 @@ expandedImage image viewport options =
         , height fill
         , Background.color (Element.rgba 0.1 0.1 0.1 0.9)
         , Element.padding padding
+        , elementId imageKey
         ]
         (Element.el
             [ width fill
