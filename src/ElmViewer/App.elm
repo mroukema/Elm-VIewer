@@ -641,7 +641,7 @@ update msg model =
                                                 imageMsg
 
                                             _ ->
-                                                GetImageDimensions ""
+                                                NoOp
                                     )
                             )
                         |> Cmd.batch
