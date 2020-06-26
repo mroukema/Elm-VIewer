@@ -500,9 +500,10 @@ saveCatalog data preferences filename =
     Download.string filename "application/json" (encodeSaveData data preferences)
 
 
-getImageDimensions filename =
-    Task.attempt (ImageDimensions filename)
-        (Dom.getElement (sizeCheckIdPrefix ++ filename))
+getImageDimensions : ImageKey -> Cmd Msg
+getImageDimensions imageKey =
+    Task.attempt (ImageDimensions imageKey)
+        (Dom.getElement (sizeCheckIdPrefix ++ imageKey))
 
 
 scrollToElement : ImageKey -> Cmd Msg
