@@ -618,7 +618,7 @@ update msg model =
                     let
                         dataAndPreferences =
                             decodeSaveData viewport jsonString
-                                |> (Maybe.withDefault <| Model viewport data preferences)
+                                |> Maybe.withDefault (Model viewport data preferences)
 
                         newModel =
                             dataAndPreferences viewState
