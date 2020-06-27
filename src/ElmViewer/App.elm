@@ -1442,6 +1442,76 @@ imageHeader model =
                         |> List.map rgbPaletteColor
                         |> List.last
                         |> Maybe.withDefault (head |> rgbPaletteColor)
+
+        startSlides =
+            \images ->
+                "Start Slideshow"
+                    |> Element.text
+                    |> Element.el
+                        [ centerX
+                        , onClick <| startSlideshow <| List.sort <| List.map Tuple.first images
+                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                        ]
+                    |> Element.el [ Font.color fontColor, width fill, centerX ]
+
+        preferences =
+            "Preferences"
+                |> Element.text
+                |> Element.el
+                    [ centerX
+                    , onClick <| UpdateView Settings
+                    , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                    ]
+                |> Element.el [ Font.color fontColor, width fill, centerX ]
+
+        previewView =
+            "Preview View"
+                |> Element.text
+                |> Element.el
+                    [ centerX
+                    , onClick <| UpdateView previewCatalogState
+                    , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                    ]
+                |> Element.el [ Font.color fontColor, centerX, width fill ]
+
+        selectImages =
+            "Select Images"
+                |> Element.text
+                |> Element.el
+                    [ centerX
+                    , onClick OpenImagePicker
+                    , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                    ]
+                |> Element.el [ Font.color fontColor, centerX, width fill ]
+
+        save =
+            \saveName ->
+                Element.row [ centerX, width fill ]
+                    [ "Save"
+                        |> Element.text
+                        |> Element.el
+                            [ centerX
+                            , onClick (SaveCatalog (saveName |> Maybe.withDefault defaultSaveFilename))
+                            , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                            ]
+                        |> Element.el [ Font.color fontColor, centerX, width fill ]
+                    , Input.text [ width fill, height fill ]
+                        { onChange = UpdateSaveName
+                        , text = saveName |> Maybe.withDefault ""
+                        , placeholder = Just <| Input.placeholder [] (text defaultSaveFilename)
+                        , label = Input.labelHidden "Filename"
+                        }
+                    ]
+
+        load =
+            "Load"
+                |> Element.text
+                |> Element.el
+                    [ centerX
+                    , onClick LoadCatalog
+                    , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                    ]
+                |> Element.el [ Font.color fontColor, centerX, width fill ]
     in
     case model of
         SettingsView { saveFilename } ->
@@ -1456,46 +1526,10 @@ imageHeader model =
                 ]
                 [ Element.el [ centerX, width fill ] Element.none
                 , Element.text ""
-                , "Preview View"
-                    |> Element.text
-                    |> Element.el
-                        [ centerX
-                        , onClick <| UpdateView previewCatalogState
-                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                        ]
-                    |> Element.el [ Font.color fontColor, centerX, width fill ]
-                , "Select Images"
-                    |> Element.text
-                    |> Element.el
-                        [ centerX
-                        , onClick OpenImagePicker
-                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                        ]
-                    |> Element.el [ Font.color fontColor, centerX, width fill ]
-                , Element.row [ centerX, width fill ]
-                    [ "Save"
-                        |> Element.text
-                        |> Element.el
-                            [ centerX
-                            , onClick (SaveCatalog (saveFilename |> Maybe.withDefault defaultSaveFilename))
-                            , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                            ]
-                        |> Element.el [ Font.color fontColor, centerX, width fill ]
-                    , Input.text [ width fill, height fill ]
-                        { onChange = UpdateSaveName
-                        , text = saveFilename |> Maybe.withDefault ""
-                        , placeholder = Just <| Input.placeholder [] (text defaultSaveFilename)
-                        , label = Input.labelHidden "Filename"
-                        }
-                    ]
-                , "Load"
-                    |> Element.text
-                    |> Element.el
-                        [ centerX
-                        , onClick LoadCatalog
-                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                        ]
-                    |> Element.el [ Font.color fontColor, centerX, width fill ]
+                , previewView
+                , selectImages
+                , save saveFilename
+                , load
                 ]
 
         PreviewView imageUrls _ { saveFilename } ->
@@ -1506,54 +1540,11 @@ imageHeader model =
                 , Element.spaceEvenly
                 , Element.padding 20
                 ]
-                [ "Start Slideshow"
-                    |> Element.text
-                    |> Element.el
-                        [ centerX
-                        , onClick <| startSlideshow <| List.sort <| List.map Tuple.first imageUrls
-                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                        ]
-                    |> Element.el [ Font.color fontColor, width fill, centerX ]
-                , "Preferences"
-                    |> Element.text
-                    |> Element.el
-                        [ centerX
-                        , onClick <| UpdateView Settings
-                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                        ]
-                    |> Element.el [ Font.color fontColor, width fill, centerX ]
-                , "Select Images"
-                    |> Element.text
-                    |> Element.el
-                        [ onClick OpenImagePicker
-                        , centerX
-                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                        ]
-                    |> Element.el [ Font.color fontColor, width fill, centerX ]
-                , Element.row [ centerX, width fill ]
-                    [ "Save"
-                        |> Element.text
-                        |> Element.el
-                            [ centerX
-                            , onClick (SaveCatalog (saveFilename |> Maybe.withDefault defaultSaveFilename))
-                            , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                            ]
-                        |> Element.el [ Font.color fontColor, centerX, width fill ]
-                    , Input.text [ width fill, height fill ]
-                        { onChange = UpdateSaveName
-                        , text = saveFilename |> Maybe.withDefault ""
-                        , placeholder = Just <| Input.placeholder [] (text defaultSaveFilename)
-                        , label = Input.labelHidden "Filename"
-                        }
-                    ]
-                , "Load"
-                    |> Element.text
-                    |> Element.el
-                        [ onClick LoadCatalog
-                        , centerX
-                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                        ]
-                    |> Element.el [ Font.color fontColor, width fill, centerX ]
+                [ startSlides imageUrls
+                , preferences
+                , selectImages
+                , save saveFilename
+                , load
                 ]
 
         _ ->
