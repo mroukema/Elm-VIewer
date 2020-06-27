@@ -879,7 +879,10 @@ subscriptions model =
     case model of
         Model _ data preferences state ->
             let
-                { slideshowSpeed, keyboardControls, defaultRotation, defaultZoom, infinityScroll } =
+                { slideshowSpeed, keyboardControls, infinityScroll } =
+                    preferences
+
+                { defaultRotation, defaultZoom } =
                     preferences
             in
             case state of
@@ -1008,13 +1011,19 @@ subscriptions model =
                         keyPressListeners =
                             [ Browser.onKeyPress <|
                                 msgWhenKeyOf controls.startSlideshow
-                                    (always <| startSlideshow <| List.sort <| Dict.keys data)
+                                    (always
+                                        (Dict.keys data
+                                            |> List.sort
+                                            |> startSlideshow
+                                        )
+                                    )
                             , Browser.onKeyPress <|
                                 msgWhenKeyOf controls.startInfinityMode
-                                    (always <|
-                                        startInfinityMode infinityScroll <|
-                                            List.sort <|
-                                                Dict.keys data
+                                    (always
+                                        (Dict.keys data
+                                            |> List.sort
+                                            |> startInfinityMode infinityScroll
+                                        )
                                     )
                             ]
                     in
@@ -1098,15 +1107,30 @@ preferencesDecoder : Json.Decoder Preferences
 preferencesDecoder =
     Json.map8
         Preferences
-        (fieldWithDefault "slideshowSpeed" defaultPreferences.slideshowSpeed Json.float)
-        (fieldWithDefault "previewItemsPerRow" defaultPreferences.previewItemsPerRow Json.int)
-        (fieldWithDefault "backgroundColor" defaultPreferences.backgroundColor hexColorDecoder)
+        (fieldWithDefault "slideshowSpeed"
+            defaultPreferences.slideshowSpeed
+            Json.float
+        )
+        (fieldWithDefault "previewItemsPerRow"
+            defaultPreferences.previewItemsPerRow
+            Json.int
+        )
+        (fieldWithDefault "backgroundColor"
+            defaultPreferences.backgroundColor
+            hexColorDecoder
+        )
         (fieldWithDefault "keyboardControls"
             defaultPreferences.keyboardControls
             keyboardControlsDecoder
         )
-        (fieldWithDefault "defaultRotation" defaultPreferences.defaultRotation Json.float)
-        (fieldWithDefault "defaultZoom" defaultPreferences.defaultZoom Json.float)
+        (fieldWithDefault "defaultRotation"
+            defaultPreferences.defaultRotation
+            Json.float
+        )
+        (fieldWithDefault "defaultZoom"
+            defaultPreferences.defaultZoom
+            Json.float
+        )
         (Json.maybe (Json.field "saveFilename" Json.string))
         (fieldWithDefault "infinityScroll"
             defaultPreferences.infinityScroll
@@ -1486,8 +1510,7 @@ imageHeader model =
         fontColor =
             case colorPalette of
                 ( head, tail ) ->
-                    tail
-                        |> (::) head
+                    (head :: tail)
                         |> List.map rgbPaletteColor
                         |> List.last
                         |> Maybe.withDefault (head |> rgbPaletteColor)
