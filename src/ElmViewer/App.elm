@@ -1445,8 +1445,8 @@ imageHeader model =
 
         startSlides =
             \images ->
-                "Start Slideshow"
-                    |> Element.text
+                Icon.film
+                    |> iconElement [ Svg.color "#FFFFFF" ]
                     |> Element.el
                         [ centerX
                         , onClick <| startSlideshow <| List.sort <| List.map Tuple.first images
@@ -1455,8 +1455,8 @@ imageHeader model =
                     |> Element.el [ Font.color fontColor, width fill, centerX ]
 
         preferences =
-            "Preferences"
-                |> Element.text
+            Icon.eye
+                |> iconElement [ Svg.color "#FFFFFF" ]
                 |> Element.el
                     [ centerX
                     , onClick <| UpdateView Settings
@@ -1465,8 +1465,8 @@ imageHeader model =
                 |> Element.el [ Font.color fontColor, width fill, centerX ]
 
         previewView =
-            "Preview View"
-                |> Element.text
+            Icon.eye
+                |> iconElement [ Svg.color "#FFFFFF" ]
                 |> Element.el
                     [ centerX
                     , onClick <| UpdateView previewCatalogState
@@ -1475,8 +1475,8 @@ imageHeader model =
                 |> Element.el [ Font.color fontColor, centerX, width fill ]
 
         selectImages =
-            "Select Images"
-                |> Element.text
+            Icon.filePlus
+                |> iconElement [ Svg.color "#FFFFFF" ]
                 |> Element.el
                     [ centerX
                     , onClick OpenImagePicker
@@ -1487,8 +1487,8 @@ imageHeader model =
         save =
             \saveName ->
                 Element.row [ centerX, width fill ]
-                    [ "Save"
-                        |> Element.text
+                    [ Icon.download
+                        |> iconElement [ Svg.color "#FFFFFF" ]
                         |> Element.el
                             [ centerX
                             , onClick (SaveCatalog (saveName |> Maybe.withDefault defaultSaveFilename))
@@ -1504,8 +1504,8 @@ imageHeader model =
                     ]
 
         load =
-            "Load"
-                |> Element.text
+            Icon.upload
+                |> iconElement [ Svg.color "#FFFFFF" ]
                 |> Element.el
                     [ centerX
                     , onClick LoadCatalog
@@ -1877,10 +1877,13 @@ filePreviewView images { imagesPerRow, backgroundColor, imageSelection } =
         )
 
 
+iconElement style =
+    Icon.toHtml style >> Element.html
+
+
 squareXIconControl msg =
     Icon.x
-        |> Icon.toHtml [ Svg.color "#C00000" ]
-        |> Element.html
+        |> iconElement [ Svg.color "#C00000" ]
         |> Element.el
             [ onClick msg
             , width (24 |> px)
