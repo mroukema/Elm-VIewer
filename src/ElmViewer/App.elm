@@ -669,7 +669,12 @@ update msg model =
         UpdateSaveName newFilename ->
             case newFilename == "" of
                 True ->
-                    ( Model cViewport cImages { cPreferences | saveFilename = Nothing } cState, Cmd.none )
+                    ( Model cViewport
+                        cImages
+                        { cPreferences | saveFilename = Nothing }
+                        cState
+                    , Cmd.none
+                    )
 
                 _ ->
                     ( Model
@@ -695,13 +700,19 @@ updateImageDimensions data filename { width, height } =
                 Just (Processing image) ->
                     Just
                         (Ready <|
-                            ReadyImage image.imageUrl { width = width, height = height } Nothing Nothing
+                            ReadyImage image.imageUrl
+                                { width = width, height = height }
+                                Nothing
+                                Nothing
                         )
 
                 Just (Ready image) ->
                     Just
                         (Ready <|
-                            ReadyImage image.imageUrl { width = width, height = height } Nothing Nothing
+                            ReadyImage image.imageUrl
+                                { width = width, height = height }
+                                Nothing
+                                Nothing
                         )
 
                 Nothing ->
@@ -852,6 +863,13 @@ updateImageZoom data defaultZoom imageKey delta =
             )
 
 
+stepPreviewList : Direction -> ( ImageKey, List ImageKey ) -> Msg
+stepPreviewList direction tupleList =
+    tupleList
+        |> stepTupleList direction
+        |> (UpdateView << Preview << Focused)
+
+
 subscriptions : Model -> Sub Msg
 subscriptions model =
     let
@@ -875,13 +893,17 @@ subscriptions model =
 
                         navigationListeners =
                             [ Browser.onKeyPress <|
-                                msgWhenKeyOf controls.toggle (always <| togglePauseSlideshow currentState)
+                                msgWhenKeyOf controls.toggle
+                                    (always <| togglePauseSlideshow currentState)
                             , Browser.onKeyUp <|
-                                msgWhenKeyOf controls.next (always <| stepSlideshow currentState Forward)
+                                msgWhenKeyOf controls.next
+                                    (always <| stepSlideshow currentState Forward)
                             , Browser.onKeyUp <|
-                                msgWhenKeyOf controls.prev (always <| stepSlideshow currentState Backward)
+                                msgWhenKeyOf controls.prev
+                                    (always <| stepSlideshow currentState Backward)
                             , Browser.onKeyUp <|
-                                msgWhenKeyOf controls.exit (always <| UpdateView (Preview (Catalog Nothing)))
+                                msgWhenKeyOf controls.exit
+                                    (always <| UpdateView (Preview (Catalog Nothing)))
                             , Browser.onKeyUp <|
                                 msgWhenKeyOf controls.rotateP
                                     (always <|
@@ -947,27 +969,31 @@ subscriptions model =
                         keyPressListeners =
                             [ Browser.onKeyPress <|
                                 msgWhenKeyOf controlKeys.startSlideshow
-                                    (always <|
-                                        UpdateView (openSlideshowWith imageKey <| List.sort <| Dict.keys data)
+                                    (always
+                                        (Dict.keys data
+                                            |> List.sort
+                                            |> openSlideshowWith imageKey
+                                            |> UpdateView
+                                        )
                                     )
                             , Browser.onKeyUp <|
                                 msgWhenKeyOf controlKeys.closeCurrent
-                                    (always <| UpdateView <| Preview (Catalog Nothing))
+                                    (always (UpdateView <| Preview (Catalog Nothing)))
                             , Browser.onKeyUp <|
                                 msgWhenKeyOf controlKeys.openCurrent
-                                    (always <|
-                                        UpdateView (openSlideshowWith imageKey <| List.sort <| Dict.keys data)
+                                    (always
+                                        (Dict.keys data
+                                            |> List.sort
+                                            |> openSlideshowWith imageKey
+                                            |> UpdateView
+                                        )
                                     )
                             , Browser.onKeyUp <|
                                 msgWhenKeyOf [ "ArrowRight" ]
-                                    (always <|
-                                        UpdateView (Preview (Focused (tupleList |> stepTupleList Forward)))
-                                    )
+                                    (always (stepPreviewList Forward tupleList))
                             , Browser.onKeyUp <|
                                 msgWhenKeyOf [ "ArrowLeft" ]
-                                    (always <|
-                                        UpdateView (Preview (Focused (tupleList |> stepTupleList Backward)))
-                                    )
+                                    (always (stepPreviewList Backward tupleList))
                             ]
                     in
                     keyPressListeners
@@ -1042,7 +1068,8 @@ preferencesEncoder preferences =
 
         saveFilenameEntry =
             saveFilename
-                |> Maybe.andThen (\filename -> [ ( "saveFilename", filename |> Encode.string ) ] |> Just)
+                |> Maybe.andThen
+                    (\filename -> [ ( "saveFilename", filename |> Encode.string ) ] |> Just)
                 |> Maybe.withDefault []
     in
     Encode.object
@@ -1074,7 +1101,10 @@ preferencesDecoder =
         (fieldWithDefault "slideshowSpeed" defaultPreferences.slideshowSpeed Json.float)
         (fieldWithDefault "previewItemsPerRow" defaultPreferences.previewItemsPerRow Json.int)
         (fieldWithDefault "backgroundColor" defaultPreferences.backgroundColor hexColorDecoder)
-        (fieldWithDefault "keyboardControls" defaultPreferences.keyboardControls keyboardControlsDecoder)
+        (fieldWithDefault "keyboardControls"
+            defaultPreferences.keyboardControls
+            keyboardControlsDecoder
+        )
         (fieldWithDefault "defaultRotation" defaultPreferences.defaultRotation Json.float)
         (fieldWithDefault "defaultZoom" defaultPreferences.defaultZoom Json.float)
         (Json.maybe (Json.field "saveFilename" Json.string))
@@ -1176,11 +1206,19 @@ keyboardControlsDecoder =
         )
         (Json.field "previewMap"
             (Json.map4 PreviewMap
-                (fieldWithDefault "openCurrent" defaultPreviewMap.openCurrent (Json.list Json.string))
-                (fieldWithDefault "closeCurrent" defaultPreviewMap.closeCurrent (Json.list Json.string))
-                (fieldWithDefault "startSlideshow" defaultPreviewMap.startSlideshow (Json.list Json.string))
-                (fieldWithDefault
-                    "startInfinityMode"
+                (fieldWithDefault "openCurrent"
+                    defaultPreviewMap.openCurrent
+                    (Json.list Json.string)
+                )
+                (fieldWithDefault "closeCurrent"
+                    defaultPreviewMap.closeCurrent
+                    (Json.list Json.string)
+                )
+                (fieldWithDefault "startSlideshow"
+                    defaultPreviewMap.startSlideshow
+                    (Json.list Json.string)
+                )
+                (fieldWithDefault "startInfinityMode"
                     defaultPreviewMap.startInfinityMode
                     (Json.list Json.string)
                 )
@@ -1188,7 +1226,10 @@ keyboardControlsDecoder =
         )
         (Json.field "infinityMap"
             (Json.map InfinityMap
-                (fieldWithDefault "closeInfinity" defaultInfinityMap.closeInfinity (Json.list Json.string))
+                (fieldWithDefault "closeInfinity"
+                    defaultInfinityMap.closeInfinity
+                    (Json.list Json.string)
+                )
             )
         )
 
@@ -1450,7 +1491,8 @@ imageHeader model =
                     |> Element.el
                         [ centerX
                         , onClick <| startSlideshow <| List.sort <| List.map Tuple.first images
-                        , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                        , Element.mouseOver
+                            [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
                         ]
                     |> Element.el [ Font.color fontColor, width fill, centerX ]
 
@@ -1491,8 +1533,10 @@ imageHeader model =
                         |> iconElement [ Svg.color "#FFFFFF" ]
                         |> Element.el
                             [ centerX
-                            , onClick (SaveCatalog (saveName |> Maybe.withDefault defaultSaveFilename))
-                            , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                            , onClick
+                                (SaveCatalog (saveName |> Maybe.withDefault defaultSaveFilename))
+                            , Element.mouseOver
+                                [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
                             ]
                         |> Element.el [ Font.color fontColor, centerX, width fill ]
                     , Input.text [ width fill, height fill ]
@@ -1509,7 +1553,8 @@ imageHeader model =
                 |> Element.el
                     [ centerX
                     , onClick LoadCatalog
-                    , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                    , Element.mouseOver
+                        [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
                     ]
                 |> Element.el [ Font.color fontColor, centerX, width fill ]
     in
@@ -1525,7 +1570,6 @@ imageHeader model =
                 , Element.padding 20
                 ]
                 [ Element.el [ centerX, width fill ] Element.none
-                , Element.text ""
                 , previewView
                 , selectImages
                 , save saveFilename
@@ -1938,7 +1982,8 @@ previewImage otherSelected ( imageKey, { imageUrl } ) =
         orderedSelected =
             otherSelected
                 |> List.splitWhen ((==) imageKey)
-                |> Maybe.andThen (\( head, tail ) -> Just (List.append (tail |> List.remove imageKey) head))
+                |> Maybe.andThen
+                    (\( head, tail ) -> Just (List.append (tail |> List.remove imageKey) head))
                 |> Maybe.withDefault otherSelected
 
         mouseOverScaleFactor =
