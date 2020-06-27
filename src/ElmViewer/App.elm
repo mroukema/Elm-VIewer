@@ -1442,7 +1442,15 @@ renderView model =
                         [ infinityReadingView state ]
     in
     content
-        |> Element.layout
+        |> Element.layoutWith
+            { options =
+                [ Element.focusStyle
+                    { borderColor = Nothing
+                    , backgroundColor = Nothing
+                    , shadow = Nothing
+                    }
+                ]
+            }
             [ inFront <| overlay
             , Background.color backgroundColor
             , Element.onRight (dimensionGetter getDimensionList)
@@ -1486,58 +1494,58 @@ imageHeader model =
 
         startSlides =
             \images ->
-                Icon.film
-                    |> iconElement [ Svg.color "#FFFFFF" ]
-                    |> Element.el
-                        [ centerX
-                        , onClick <| startSlideshow <| List.sort <| List.map Tuple.first images
-                        , Element.mouseOver
-                            [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                        ]
+                Input.button
+                    [ centerX
+                    , Element.mouseOver
+                        [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                    ]
+                    { onPress = Just <| startSlideshow <| List.sort <| List.map Tuple.first images
+                    , label = Icon.film |> iconElement [ Svg.color "#FFFFFF" ]
+                    }
                     |> Element.el [ Font.color fontColor, width fill, centerX ]
 
         preferences =
-            Icon.eye
-                |> iconElement [ Svg.color "#FFFFFF" ]
-                |> Element.el
-                    [ centerX
-                    , onClick <| UpdateView Settings
-                    , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                    ]
+            Input.button
+                [ centerX
+                , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                ]
+                { onPress = Just <| UpdateView Settings
+                , label = Icon.settings |> iconElement [ Svg.color "#FFFFFF" ]
+                }
                 |> Element.el [ Font.color fontColor, width fill, centerX ]
 
         previewView =
-            Icon.eye
-                |> iconElement [ Svg.color "#FFFFFF" ]
-                |> Element.el
-                    [ centerX
-                    , onClick <| UpdateView previewCatalogState
-                    , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                    ]
+            Input.button
+                [ centerX
+                , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                ]
+                { onPress = Just <| UpdateView previewCatalogState
+                , label = Icon.eye |> iconElement [ Svg.color "#FFFFFF" ]
+                }
                 |> Element.el [ Font.color fontColor, centerX, width fill ]
 
         selectImages =
-            Icon.filePlus
-                |> iconElement [ Svg.color "#FFFFFF" ]
-                |> Element.el
-                    [ centerX
-                    , onClick OpenImagePicker
-                    , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                    ]
+            Input.button
+                [ centerX
+                , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                ]
+                { onPress = Just <| OpenImagePicker
+                , label = Icon.filePlus |> iconElement [ Svg.color "#FFFFFF" ]
+                }
                 |> Element.el [ Font.color fontColor, centerX, width fill ]
 
         save =
             \saveName ->
                 Element.row [ centerX, width fill ]
-                    [ Icon.download
-                        |> iconElement [ Svg.color "#FFFFFF" ]
-                        |> Element.el
-                            [ centerX
-                            , onClick
-                                (SaveCatalog (saveName |> Maybe.withDefault defaultSaveFilename))
-                            , Element.mouseOver
-                                [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                            ]
+                    [ Input.button
+                        [ centerX
+                        , Element.mouseOver
+                            [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                        ]
+                        { onPress =
+                            Just <| SaveCatalog (saveName |> Maybe.withDefault defaultSaveFilename)
+                        , label = Icon.download |> iconElement [ Svg.color "#FFFFFF" ]
+                        }
                         |> Element.el [ Font.color fontColor, centerX, width fill ]
                     , Input.text [ width fill, height fill ]
                         { onChange = UpdateSaveName
@@ -1548,14 +1556,14 @@ imageHeader model =
                     ]
 
         load =
-            Icon.upload
-                |> iconElement [ Svg.color "#FFFFFF" ]
-                |> Element.el
-                    [ centerX
-                    , onClick LoadCatalog
-                    , Element.mouseOver
-                        [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                    ]
+            Input.button
+                [ centerX
+                , onClick LoadCatalog
+                , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
+                ]
+                { onPress = Just <| LoadCatalog
+                , label = Icon.upload |> iconElement [ Svg.color "#FFFFFF" ]
+                }
                 |> Element.el [ Font.color fontColor, centerX, width fill ]
     in
     case model of
@@ -1572,8 +1580,8 @@ imageHeader model =
                 [ Element.el [ centerX, width fill ] Element.none
                 , previewView
                 , selectImages
-                , save saveFilename
                 , load
+                , save saveFilename
                 ]
 
         PreviewView imageUrls _ { saveFilename } ->
@@ -1587,8 +1595,8 @@ imageHeader model =
                 [ startSlides imageUrls
                 , preferences
                 , selectImages
-                , save saveFilename
                 , load
+                , save saveFilename
                 ]
 
         _ ->
@@ -1655,7 +1663,8 @@ editPreferencesView preferences =
                         ]
                         Element.none
                 ]
-                { onChange = \newSpeed -> UpdatePreferences { preferences | slideshowSpeed = newSpeed }
+                { onChange =
+                    \newSpeed -> UpdatePreferences { preferences | slideshowSpeed = newSpeed }
                 , label =
                     Input.labelLeft
                         [ Font.color <| rgba255 250 250 250 1.0, width <| Element.fillPortion 1 ]
