@@ -545,23 +545,19 @@ update msg model =
             )
 
         InsertImage filename (Ok image) ->
-            case model of
-                Model viewport images preferences state ->
-                    ( Model
-                        viewport
-                        (Dict.insert filename image images)
-                        preferences
-                        state
-                    , getImageDimensions filename
-                    )
+            ( Model
+                cViewport
+                (Dict.insert filename image cImages)
+                cPreferences
+                cState
+            , getImageDimensions filename
+            )
 
         InsertImage filename (Err _) ->
             ( model, Cmd.none )
 
         RemoveImage imageKey ->
-            case model of
-                Model viewport data preferences state ->
-                    ( Model viewport (Dict.remove imageKey data) preferences state, Cmd.none )
+            ( Model cViewport (Dict.remove imageKey cImages) cPreferences cState, Cmd.none )
 
         UpdateImage imageKey maybeImage ->
             case maybeImage of
@@ -577,10 +573,8 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
-        UpdatePreferences preferences ->
-            case model of
-                Model viewport data _ state ->
-                    ( Model viewport data preferences state, Cmd.none )
+        UpdatePreferences newPreferences ->
+            ( Model cViewport cImages newPreferences cState, Cmd.none )
 
         UpdateView newState ->
             let
@@ -616,39 +610,37 @@ update msg model =
             ( model, Task.attempt CatalogDecoded (File.toString file) )
 
         CatalogDecoded (Ok jsonString) ->
-            case model of
-                Model viewport data preferences viewState ->
-                    let
-                        dataAndPreferences =
-                            decodeSaveData viewport jsonString
-                                |> Maybe.withDefault (Model viewport data preferences)
+            let
+                dataAndPreferences =
+                    decodeSaveData cViewport jsonString
+                        |> Maybe.withDefault (Model cViewport cImages cPreferences)
 
-                        newModel =
-                            dataAndPreferences viewState
+                newModel =
+                    dataAndPreferences cState
 
-                        ( _, dimensionlessImages ) =
-                            case newModel of
-                                Model _ newData _ _ ->
-                                    partitionReadyImages newData
-                    in
-                    ( newModel
-                    , dimensionlessImages
-                        |> List.map
-                            (Tuple.first
-                                >> GetImageDimensions
-                                >> Task.succeed
-                                >> Task.attempt
-                                    (\result ->
-                                        case result of
-                                            Ok imageMsg ->
-                                                imageMsg
+                ( _, dimensionlessImages ) =
+                    case newModel of
+                        Model _ newData _ _ ->
+                            partitionReadyImages newData
+            in
+            ( newModel
+            , dimensionlessImages
+                |> List.map
+                    (Tuple.first
+                        >> GetImageDimensions
+                        >> Task.succeed
+                        >> Task.attempt
+                            (\result ->
+                                case result of
+                                    Ok imageMsg ->
+                                        imageMsg
 
-                                            _ ->
-                                                NoOp
-                                    )
+                                    _ ->
+                                        NoOp
                             )
-                        |> Cmd.batch
                     )
+                |> Cmd.batch
+            )
 
         CatalogDecoded (Err _) ->
             ( model, Cmd.none )
