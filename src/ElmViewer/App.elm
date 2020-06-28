@@ -879,190 +879,193 @@ subscriptions model =
         viewportResizeListener =
             Browser.onResize (\_ _ -> GetViewport)
     in
-    case model of
-        Model _ data preferences state ->
+    let
+        { data, preferences, state } =
+            case model of
+                Model _ data_ preferences_ state_ ->
+                    { data = data_, preferences = preferences_, state = state_ }
+
+        { slideshowSpeed, keyboardControls, infinityScroll } =
+            preferences
+
+        { defaultRotation, defaultZoom } =
+            preferences
+    in
+    case state of
+        Slideshow currentState ->
             let
-                { slideshowSpeed, keyboardControls, infinityScroll } =
-                    preferences
+                currentSlideKey =
+                    List.head currentState.slidelist
 
-                { defaultRotation, defaultZoom } =
-                    preferences
+                controls =
+                    keyboardControls.slideshowMap
+
+                navigationListeners =
+                    [ Browser.onKeyPress <|
+                        msgWhenKeyOf controls.toggle
+                            (always <| togglePauseSlideshow currentState)
+                    , Browser.onKeyUp <|
+                        msgWhenKeyOf controls.next
+                            (always <| stepSlideshow currentState Forward)
+                    , Browser.onKeyUp <|
+                        msgWhenKeyOf controls.prev
+                            (always <| stepSlideshow currentState Backward)
+                    , Browser.onKeyUp <|
+                        msgWhenKeyOf controls.exit
+                            (always <| UpdateView (Preview (Catalog Nothing)))
+                    , Browser.onKeyUp <|
+                        msgWhenKeyOf controls.rotateP
+                            (always <|
+                                UpdateImage (currentSlideKey |> Maybe.withDefault "")
+                                    (updateImageRotation data
+                                        defaultRotation
+                                        (currentSlideKey |> Maybe.withDefault "")
+                                        rotationGranularity
+                                    )
+                            )
+                    , Browser.onKeyUp <|
+                        msgWhenKeyOf controls.rotateM
+                            (always <|
+                                UpdateImage (currentSlideKey |> Maybe.withDefault "")
+                                    (updateImageRotation data
+                                        defaultRotation
+                                        (currentSlideKey |> Maybe.withDefault "")
+                                        -rotationGranularity
+                                    )
+                            )
+                    , Browser.onKeyUp <|
+                        msgWhenKeyOf controls.zoomP
+                            (always <|
+                                UpdateImage (currentSlideKey |> Maybe.withDefault "")
+                                    (updateImageZoom data
+                                        defaultZoom
+                                        (currentSlideKey |> Maybe.withDefault "")
+                                        zoomGranularity
+                                    )
+                            )
+                    , Browser.onKeyUp <|
+                        msgWhenKeyOf controls.zoomM
+                            (always <|
+                                UpdateImage (currentSlideKey |> Maybe.withDefault "")
+                                    (updateImageZoom data
+                                        defaultZoom
+                                        (currentSlideKey |> Maybe.withDefault "")
+                                        -zoomGranularity
+                                    )
+                            )
+                    ]
             in
-            case state of
-                Slideshow currentState ->
-                    let
-                        currentSlideKey =
-                            List.head currentState.slidelist
-
-                        controls =
-                            keyboardControls.slideshowMap
-
-                        navigationListeners =
-                            [ Browser.onKeyPress <|
-                                msgWhenKeyOf controls.toggle
-                                    (always <| togglePauseSlideshow currentState)
-                            , Browser.onKeyUp <|
-                                msgWhenKeyOf controls.next
-                                    (always <| stepSlideshow currentState Forward)
-                            , Browser.onKeyUp <|
-                                msgWhenKeyOf controls.prev
-                                    (always <| stepSlideshow currentState Backward)
-                            , Browser.onKeyUp <|
-                                msgWhenKeyOf controls.exit
-                                    (always <| UpdateView (Preview (Catalog Nothing)))
-                            , Browser.onKeyUp <|
-                                msgWhenKeyOf controls.rotateP
-                                    (always <|
-                                        UpdateImage (currentSlideKey |> Maybe.withDefault "")
-                                            (updateImageRotation data
-                                                defaultRotation
-                                                (currentSlideKey |> Maybe.withDefault "")
-                                                rotationGranularity
-                                            )
-                                    )
-                            , Browser.onKeyUp <|
-                                msgWhenKeyOf controls.rotateM
-                                    (always <|
-                                        UpdateImage (currentSlideKey |> Maybe.withDefault "")
-                                            (updateImageRotation data
-                                                defaultRotation
-                                                (currentSlideKey |> Maybe.withDefault "")
-                                                -rotationGranularity
-                                            )
-                                    )
-                            , Browser.onKeyUp <|
-                                msgWhenKeyOf controls.zoomP
-                                    (always <|
-                                        UpdateImage (currentSlideKey |> Maybe.withDefault "")
-                                            (updateImageZoom data
-                                                defaultZoom
-                                                (currentSlideKey |> Maybe.withDefault "")
-                                                zoomGranularity
-                                            )
-                                    )
-                            , Browser.onKeyUp <|
-                                msgWhenKeyOf controls.zoomM
-                                    (always <|
-                                        UpdateImage (currentSlideKey |> Maybe.withDefault "")
-                                            (updateImageZoom data
-                                                defaultZoom
-                                                (currentSlideKey |> Maybe.withDefault "")
-                                                -zoomGranularity
-                                            )
-                                    )
-                            ]
-                    in
-                    case currentState.running && (Dict.size data > 1) of
-                        True ->
-                            navigationListeners
-                                |> (::)
-                                    (Time.every slideshowSpeed
-                                        (always <| stepSlideshow currentState Forward)
-                                    )
-                                |> (::) viewportResizeListener
-                                |> Sub.batch
-
-                        False ->
-                            navigationListeners
-                                |> (::) viewportResizeListener
-                                |> Sub.batch
-
-                Preview (Focused (( imageKey, imageList ) as tupleList)) ->
-                    let
-                        controlKeys =
-                            keyboardControls.previewMap
-
-                        keyPressListeners =
-                            [ Browser.onKeyPress <|
-                                msgWhenKeyOf controlKeys.startSlideshow
-                                    (always
-                                        (Dict.keys data
-                                            |> List.sort
-                                            |> openSlideshowWith imageKey
-                                            |> UpdateView
-                                        )
-                                    )
-                            , Browser.onKeyUp <|
-                                msgWhenKeyOf controlKeys.closeCurrent
-                                    (always (UpdateView <| Preview (Catalog Nothing)))
-                            , Browser.onKeyUp <|
-                                msgWhenKeyOf controlKeys.openCurrent
-                                    (always
-                                        (Dict.keys data
-                                            |> List.sort
-                                            |> openSlideshowWith imageKey
-                                            |> UpdateView
-                                        )
-                                    )
-                            , Browser.onKeyUp <|
-                                msgWhenKeyOf [ "ArrowRight" ]
-                                    (always (stepPreviewList Forward tupleList))
-                            , Browser.onKeyUp <|
-                                msgWhenKeyOf [ "ArrowLeft" ]
-                                    (always (stepPreviewList Backward tupleList))
-                            ]
-                    in
-                    keyPressListeners
+            case currentState.running && (Dict.size data > 1) of
+                True ->
+                    navigationListeners
+                        |> (::)
+                            (Time.every slideshowSpeed
+                                (always <| stepSlideshow currentState Forward)
+                            )
                         |> (::) viewportResizeListener
                         |> Sub.batch
 
-                Preview (Catalog imageList) ->
-                    let
-                        controls =
-                            keyboardControls.previewMap
-
-                        keyPressListeners =
-                            [ Browser.onKeyPress <|
-                                msgWhenKeyOf controls.startSlideshow
-                                    (always
-                                        (Dict.keys data
-                                            |> List.sort
-                                            |> startSlideshow
-                                        )
-                                    )
-                            , Browser.onKeyPress <|
-                                msgWhenKeyOf controls.startInfinityMode
-                                    (always
-                                        (Dict.keys data
-                                            |> List.sort
-                                            |> startInfinityMode infinityScroll
-                                        )
-                                    )
-                            ]
-                    in
-                    keyPressListeners
+                False ->
+                    navigationListeners
                         |> (::) viewportResizeListener
                         |> Sub.batch
 
-                Settings ->
-                    let
-                        controls =
-                            keyboardControls.preferencesMap
+        Preview (Focused (( imageKey, imageList ) as tupleList)) ->
+            let
+                controlKeys =
+                    keyboardControls.previewMap
 
-                        keyPressListeners =
-                            [ Browser.onKeyUp <|
-                                msgWhenKeyOf controls.exit
-                                    (always <| UpdateView previewCatalogState)
-                            ]
-                    in
-                    keyPressListeners
-                        |> (::) viewportResizeListener
-                        |> Sub.batch
+                keyPressListeners =
+                    [ Browser.onKeyPress <|
+                        msgWhenKeyOf controlKeys.startSlideshow
+                            (always
+                                (Dict.keys data
+                                    |> List.sort
+                                    |> openSlideshowWith imageKey
+                                    |> UpdateView
+                                )
+                            )
+                    , Browser.onKeyUp <|
+                        msgWhenKeyOf controlKeys.closeCurrent
+                            (always (UpdateView <| Preview (Catalog Nothing)))
+                    , Browser.onKeyUp <|
+                        msgWhenKeyOf controlKeys.openCurrent
+                            (always
+                                (Dict.keys data
+                                    |> List.sort
+                                    |> openSlideshowWith imageKey
+                                    |> UpdateView
+                                )
+                            )
+                    , Browser.onKeyUp <|
+                        msgWhenKeyOf [ "ArrowRight" ]
+                            (always (stepPreviewList Forward tupleList))
+                    , Browser.onKeyUp <|
+                        msgWhenKeyOf [ "ArrowLeft" ]
+                            (always (stepPreviewList Backward tupleList))
+                    ]
+            in
+            keyPressListeners
+                |> (::) viewportResizeListener
+                |> Sub.batch
 
-                Infinity _ ->
-                    let
-                        controls =
-                            keyboardControls.infinityMap
+        Preview (Catalog imageList) ->
+            let
+                controls =
+                    keyboardControls.previewMap
 
-                        keyPressListeners =
-                            [ Browser.onKeyUp <|
-                                msgWhenKeyOf controls.closeInfinity
-                                    (always <| UpdateView (Preview (Catalog Nothing)))
-                            ]
-                    in
-                    keyPressListeners
-                        |> (::) viewportResizeListener
-                        |> Sub.batch
+                keyPressListeners =
+                    [ Browser.onKeyPress <|
+                        msgWhenKeyOf controls.startSlideshow
+                            (always
+                                (Dict.keys data
+                                    |> List.sort
+                                    |> startSlideshow
+                                )
+                            )
+                    , Browser.onKeyPress <|
+                        msgWhenKeyOf controls.startInfinityMode
+                            (always
+                                (Dict.keys data
+                                    |> List.sort
+                                    |> startInfinityMode infinityScroll
+                                )
+                            )
+                    ]
+            in
+            keyPressListeners
+                |> (::) viewportResizeListener
+                |> Sub.batch
+
+        Settings ->
+            let
+                controls =
+                    keyboardControls.preferencesMap
+
+                keyPressListeners =
+                    [ Browser.onKeyUp <|
+                        msgWhenKeyOf controls.exit
+                            (always <| UpdateView previewCatalogState)
+                    ]
+            in
+            keyPressListeners
+                |> (::) viewportResizeListener
+                |> Sub.batch
+
+        Infinity _ ->
+            let
+                controls =
+                    keyboardControls.infinityMap
+
+                keyPressListeners =
+                    [ Browser.onKeyUp <|
+                        msgWhenKeyOf controls.closeInfinity
+                            (always <| UpdateView (Preview (Catalog Nothing)))
+                    ]
+            in
+            keyPressListeners
+                |> (::) viewportResizeListener
+                |> Sub.batch
 
 
 
