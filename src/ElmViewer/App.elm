@@ -878,8 +878,7 @@ subscriptions model =
     let
         viewportResizeListener =
             Browser.onResize (\_ _ -> GetViewport)
-    in
-    let
+
         { data, preferences, state } =
             case model of
                 Model _ data_ preferences_ state_ ->
