@@ -1,5 +1,6 @@
 module ElmViewer.Utils exposing
     ( Direction(..)
+    , colorFromPalette
     , flip
     , getFromDict
     , getRotatedDimensions
@@ -94,6 +95,20 @@ rgbFromTuple ( r, g, b ) =
 rgbPaletteColor : PaletteColor.Color -> Element.Color
 rgbPaletteColor =
     PaletteColor.toRGB >> rgbFromTuple
+
+
+colorFromPalette : ( PaletteColor.Color, List PaletteColor.Color ) -> Int -> Element.Color
+colorFromPalette palette offset =
+    let
+        ( head_, colorList ) =
+            case palette of
+                ( head, tail ) ->
+                    ( head, head :: tail )
+    in
+    colorList
+        |> List.map rgbPaletteColor
+        |> List.getAt (offset |> modBy (List.length colorList))
+        |> Maybe.withDefault (head_ |> rgbPaletteColor)
 
 
 

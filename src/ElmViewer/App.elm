@@ -36,9 +36,11 @@ import Element.Background as Background
 import Element.Events exposing (onClick, onFocus)
 import Element.Font as Font
 import Element.Input as Input
+import Element.Region as Region
 import ElmViewer.Utils
     exposing
         ( Direction(..)
+        , colorFromPalette
         , flip
         , getFromDict
         , getRotatedDimensions
@@ -58,6 +60,7 @@ import Json.Decode as Json
 import Json.Encode as Encode
 import List.Extra as List
 import Palette.Cubehelix as Cubehelix
+import Palette.X11 as Color
 import Svg
 import Svg.Attributes as Svg
 import Task
@@ -1507,69 +1510,73 @@ imageHeader model =
                 ( head, tail ) ->
                     tail |> List.getAt 3 |> Maybe.withDefault head |> rgbPaletteColor
 
-        fontColor =
+        headerStyle =
+            [ width fill
+            , height (50 |> px)
+            , Background.color <| headerBackground
+            , Element.spaceEvenly
+            , Element.padding 20
+            ]
+
+        colorList =
             case colorPalette of
                 ( head, tail ) ->
-                    (head :: tail)
-                        |> List.map rgbPaletteColor
-                        |> List.last
-                        |> Maybe.withDefault (head |> rgbPaletteColor)
+                    head :: tail
+
+        ( baseColor, hoverColor ) =
+            ( colorFromPalette colorPalette -1
+            , colorFromPalette colorPalette -4
+            )
 
         startSlides =
             \images ->
-                Input.button
-                    [ centerX
-                    , Element.mouseOver
-                        [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                    ]
-                    { onPress = Just <| startSlideshow <| List.sort <| List.map Tuple.first images
-                    , label = Icon.film |> iconElement [ Svg.color "#FFFFFF" ]
+                iconButton
+                    { icon = Icon.film
+                    , onPress = Just <| startSlideshow <| List.sort <| List.map Tuple.first images
+                    , label = "Start Slideshow"
+                    , baseColor = baseColor
+                    , hoverColor = hoverColor
                     }
-                    |> Element.el [ Font.color fontColor, width fill, centerX ]
 
         preferences =
-            Input.button
-                [ centerX
-                , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                ]
-                { onPress = Just <| UpdateView Settings
-                , label = Icon.settings |> iconElement [ Svg.color "#FFFFFF" ]
+            iconButton
+                { icon = Icon.settings
+                , onPress = Just <| UpdateView Settings
+                , label = "Preferences"
+                , baseColor = baseColor
+                , hoverColor = hoverColor
                 }
-                |> Element.el [ Font.color fontColor, width fill, centerX ]
 
         previewView =
-            Input.button
-                [ centerX
-                , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                ]
-                { onPress = Just <| UpdateView previewCatalogState
-                , label = Icon.eye |> iconElement [ Svg.color "#FFFFFF" ]
+            iconButton
+                { icon = Icon.eye
+                , onPress = Just <| UpdateView previewCatalogState
+                , label = "Preview View"
+                , baseColor = baseColor
+                , hoverColor = hoverColor
                 }
-                |> Element.el [ Font.color fontColor, centerX, width fill ]
 
         selectImages =
-            Input.button
-                [ centerX
-                , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                ]
-                { onPress = Just <| OpenImagePicker
-                , label = Icon.filePlus |> iconElement [ Svg.color "#FFFFFF" ]
+            iconButton
+                { icon = Icon.filePlus
+                , onPress = Just <| OpenImagePicker
+                , label = "Select Images"
+                , baseColor = baseColor
+                , hoverColor = hoverColor
                 }
-                |> Element.el [ Font.color fontColor, centerX, width fill ]
 
         save =
             \saveName ->
                 Element.row [ centerX, width fill ]
-                    [ Input.button
-                        [ centerX
-                        , Element.mouseOver
-                            [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                        ]
-                        { onPress =
-                            Just <| SaveCatalog (saveName |> Maybe.withDefault defaultSaveFilename)
-                        , label = Icon.download |> iconElement [ Svg.color "#FFFFFF" ]
+                    [ iconButton
+                        { icon = Icon.download
+                        , onPress =
+                            Just <|
+                                SaveCatalog (saveName |> Maybe.withDefault defaultSaveFilename)
+                        , label = "Save"
+                        , baseColor = baseColor
+                        , hoverColor = hoverColor
                         }
-                        |> Element.el [ Font.color fontColor, centerX, width fill ]
                     , Input.text [ width fill, height fill ]
                         { onChange = UpdateSaveName
                         , text = saveName |> Maybe.withDefault ""
@@ -1579,27 +1586,17 @@ imageHeader model =
                     ]
 
         load =
-            Input.button
-                [ centerX
-                , onClick LoadCatalog
-                , Element.mouseOver [ Font.color <| Element.rgb255 230 247 241, Element.scale 1.1 ]
-                ]
-                { onPress = Just <| LoadCatalog
-                , label = Icon.upload |> iconElement [ Svg.color "#FFFFFF" ]
+            iconButton
+                { icon = Icon.upload
+                , onPress = Just <| LoadCatalog
+                , label = "Load"
+                , baseColor = baseColor
+                , hoverColor = hoverColor
                 }
-                |> Element.el [ Font.color fontColor, centerX, width fill ]
     in
     case model of
         SettingsView { saveFilename } ->
-            Element.row
-                [ Background.color <| headerBackground
-                , Element.spaceEvenly
-                , Element.padding 5
-                , centerX
-                , width fill
-                , height (50 |> px)
-                , Element.padding 20
-                ]
+            Element.row headerStyle
                 [ Element.el [ centerX, width fill ] Element.none
                 , previewView
                 , selectImages
@@ -1608,13 +1605,7 @@ imageHeader model =
                 ]
 
         PreviewView imageUrls _ { saveFilename } ->
-            Element.row
-                [ width fill
-                , height (50 |> px)
-                , Background.color <| headerBackground
-                , Element.spaceEvenly
-                , Element.padding 20
-                ]
+            Element.row headerStyle
                 [ startSlides imageUrls
                 , preferences
                 , selectImages
@@ -1624,6 +1615,37 @@ imageHeader model =
 
         _ ->
             Element.none
+
+
+iconButton :
+    { icon : Icon.Icon
+    , onPress : Maybe Msg
+    , label : String
+    , baseColor : Element.Color
+    , hoverColor : Element.Color
+    }
+    -> Element Msg
+iconButton { icon, onPress, label, baseColor, hoverColor } =
+    Input.button
+        [ centerX
+        , Element.mouseOver
+            [ Font.color hoverColor
+            , Font.size 16
+            , Element.scale 1.1
+            , Element.moveUp 8
+            ]
+        , Font.color baseColor
+        , Font.size 0
+        , Element.below <| Element.el [ centerX ] (text label)
+        ]
+        { onPress = onPress
+        , label = icon |> iconElement [] label
+        }
+        |> Element.el [ Font.color baseColor, centerX, width fill ]
+
+
+iconElement style description =
+    Icon.toHtml style >> Element.html >> Element.el [ Region.description description ]
 
 
 colorPicker updateMsg =
@@ -1953,13 +1975,9 @@ filePreviewView images { imagesPerRow, backgroundColor, imageSelection } =
         )
 
 
-iconElement style =
-    Icon.toHtml style >> Element.html
-
-
 squareXIconControl msg =
     Icon.x
-        |> iconElement [ Svg.color "#C00000" ]
+        |> iconElement [] "Close"
         |> Element.el
             [ onClick msg
             , width (24 |> px)
@@ -1970,13 +1988,13 @@ squareXIconControl msg =
                 [ Element.alpha 1
                 , Element.scale 1.2
                 ]
+            , Font.color <| rgbPaletteColor Color.red
             ]
 
 
 expandIconControl msg =
     Icon.maximize2
-        |> Icon.toHtml [ Svg.color "#0000C0" ]
-        |> Element.html
+        |> iconElement [] "Maximize"
         |> Element.el
             [ onClick msg
             , width (24 |> px)
@@ -1990,6 +2008,7 @@ expandIconControl msg =
                 , Element.scale 1.2
                 , Element.rotate (Basics.pi / 2)
                 ]
+            , Font.color <| rgbPaletteColor Color.blue
             ]
 
 
