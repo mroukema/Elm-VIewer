@@ -93,7 +93,8 @@ initialViewport ( width, height ) =
 
 defaultPreferences : Preferences
 defaultPreferences =
-    { slideshowSpeed = 3 |> seconds
+    { saveNameFocus = False
+    , slideshowSpeed = 3 |> seconds
     , previewItemsPerRow = 4
     , backgroundColor = defaultBackground
     , keyboardControls = defaultKeyboardMappings
@@ -345,7 +346,8 @@ type alias Data =
 {-| Common app preferences
 -}
 type alias Preferences =
-    { slideshowSpeed : Float
+    { saveNameFocus : Bool
+    , slideshowSpeed : Float
     , previewItemsPerRow : Int
     , backgroundColor : Color
     , keyboardControls : KeyboardMappings
@@ -427,6 +429,7 @@ type Msg
     | ImageDimensions ImageKey (Result Dom.Error Dom.Element)
     | UpdateSaveName Filename
     | GetViewport
+    | SaveNameFocus Bool
     | NoOp
 
 
@@ -683,6 +686,13 @@ update msg model =
         GetViewport ->
             ( model, Task.perform ViewportChange Dom.getViewport )
 
+        SaveNameFocus focusState ->
+            let
+                newPreferences =
+                    { cPreferences | saveNameFocus = focusState }
+            in
+            ( Model cViewport cImages newPreferences cState, Cmd.none )
+
         NoOp ->
             ( model, Cmd.none )
 
@@ -879,7 +889,7 @@ subscriptions model =
         { slideshowSpeed, keyboardControls, infinityScroll } =
             preferences
 
-        { defaultRotation, defaultZoom } =
+        { defaultRotation, defaultZoom, saveNameFocus } =
             preferences
     in
     case state of
@@ -1006,23 +1016,28 @@ subscriptions model =
                     keyboardControls.previewMap
 
                 keyPressListeners =
-                    [ Browser.onKeyPress <|
-                        msgWhenKeyOf controls.startSlideshow
-                            (always
-                                (Dict.keys data
-                                    |> List.sort
-                                    |> startSlideshow
-                                )
-                            )
-                    , Browser.onKeyPress <|
-                        msgWhenKeyOf controls.startInfinityMode
-                            (always
-                                (Dict.keys data
-                                    |> List.sort
-                                    |> startInfinityMode infinityScroll
-                                )
-                            )
-                    ]
+                    case saveNameFocus of
+                        True ->
+                            []
+
+                        False ->
+                            [ Browser.onKeyPress <|
+                                msgWhenKeyOf controls.startSlideshow
+                                    (always
+                                        (Dict.keys data
+                                            |> List.sort
+                                            |> startSlideshow
+                                        )
+                                    )
+                            , Browser.onKeyPress <|
+                                msgWhenKeyOf controls.startInfinityMode
+                                    (always
+                                        (Dict.keys data
+                                            |> List.sort
+                                            |> startInfinityMode infinityScroll
+                                        )
+                                    )
+                            ]
             in
             keyPressListeners
                 |> (::) viewportResizeListener
@@ -1034,10 +1049,15 @@ subscriptions model =
                     keyboardControls.preferencesMap
 
                 keyPressListeners =
-                    [ Browser.onKeyUp <|
-                        msgWhenKeyOf controls.exit
-                            (always <| UpdateView previewCatalogState)
-                    ]
+                    case saveNameFocus of
+                        True ->
+                            []
+
+                        False ->
+                            [ Browser.onKeyUp <|
+                                msgWhenKeyOf controls.exit
+                                    (always <| UpdateView previewCatalogState)
+                            ]
             in
             keyPressListeners
                 |> (::) viewportResizeListener
@@ -1103,7 +1123,7 @@ encodeInfinityState state =
 preferencesDecoder : Json.Decoder Preferences
 preferencesDecoder =
     Json.map8
-        Preferences
+        (Preferences False)
         (fieldWithDefault "slideshowSpeed"
             defaultPreferences.slideshowSpeed
             Json.float
@@ -1500,27 +1520,20 @@ imageHeader : ViewModel -> Element Msg
 imageHeader model =
     let
         headerBackground =
-            case colorPalette of
-                ( head, tail ) ->
-                    tail |> List.getAt 3 |> Maybe.withDefault head |> rgbPaletteColor
-
-        headerStyle =
-            [ width fill
-            , height (50 |> px)
-            , Background.color <| headerBackground
-            , Element.spaceEvenly
-            , Element.padding 20
-            ]
-
-        colorList =
-            case colorPalette of
-                ( head, tail ) ->
-                    head :: tail
+            colorFromPalette colorPalette 3
 
         ( baseColor, hoverColor ) =
             ( colorFromPalette colorPalette -1
             , colorFromPalette colorPalette -4
             )
+
+        headerStyle =
+            [ width fill
+            , height (50 |> px)
+            , Background.color headerBackground
+            , Element.spaceEvenly
+            , Element.padding 20
+            ]
 
         startSlides =
             \images ->
@@ -1571,7 +1584,13 @@ imageHeader model =
                         , baseColor = baseColor
                         , hoverColor = hoverColor
                         }
-                    , Input.text [ width fill, height fill ]
+                    , Input.text
+                        [ width fill
+                        , height fill
+                        , Element.paddingXY 0 6
+                        , Element.Events.onFocus (SaveNameFocus True)
+                        , Element.Events.onLoseFocus (SaveNameFocus False)
+                        ]
                         { onChange = UpdateSaveName
                         , text = saveName |> Maybe.withDefault ""
                         , placeholder = Just <| Input.placeholder [] (text defaultSaveFilename)
